@@ -1,0 +1,16 @@
+How to save a version of Spirit Of Eldervine
+
+Create A New Fat Jar
+1. Delete the leftover jars from the target folder (at the project root)
+2. Update the version by changing the number in the <version> tag in pom.xml (line 10)
+3. Run "mvn package" in the VS Code terminal
+
+Move Jar To Proper Location
+1. Copy the newly generated jar file (not the one with "original" in the name) from the target folder to the versions folder (both at the project root)
+2. Add a new line to versions.txt in the versions folder with a very short description of the update
+
+Save Project To GitHub
+1. Go to the "Source Control" side tab in VS Code
+2. Type the same or similar description from the versions.txt into the top text field
+3. Make sure everything in the update is done
+4. Press "Commit" to save and upload all files in the project to GitHub

@@ -1,0 +1,9 @@
+Version numbers and what they added or changed:
+
+1.0.0 - Spirit Of Eldervine was created
+1.1.0 - Fullscreen and windowed suport added
+1.2.0 - Basic Controller support added
+1.3.0 - Increased controller support, made keyBinds work
+1.4.0 - Added basic GComponent rendering
+  1.4.1 - Significantly improved GComponent selection/activation, made basic menu-change animations work
+  1.4.2 - Added Text Fields, more Menus/GComponents, and methods for quick Menu & GButton creation
