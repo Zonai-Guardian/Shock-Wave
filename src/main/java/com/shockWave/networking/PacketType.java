@@ -31,11 +31,6 @@ public class PacketType {
         if (value instanceof Byte) {
             byteVar = (Byte) value;
         }
-        //if (false) {
-        //    System.out.println("value's class \"" + value.getClass() + "\" was not recognized in PacketType constructor!");
-        //    EngineCalculator.printStackTrace();
-        //    Game.exitGame(1);
-        //}
     }
     public <T> PacketType(T value) {
         if (value instanceof String) {
@@ -58,15 +53,36 @@ public class PacketType {
             packetDataType = EngineCalculator.enumToByte(PacketDataType.class, PacketDataType.BYTE);
             byteVar = (Byte)(byte) value;
         }
-        System.out.println("PacketDataType from PacketType constructor: " + packetDataType);
-        //printData();
-        //if (false) {
-        //    System.out.println("value's class \"" + value.getClass() + "\" was not recognized in PacketType constructor!");
-        //    EngineCalculator.printStackTrace();
-        //    Game.exitGame(1);
-        //}
+    }
+    public PacketType(PacketType pt) {
+        this.packetDataType = pt.packetDataType;
+        this.stringVar = pt.stringVar;
+        this.doubleVar = pt.doubleVar;
+        this.integerVar = pt.integerVar;
+        this.shortVar = pt.shortVar;
+        this.byteVar = pt.byteVar;
+    }
+    private String getDataAsString() {
+        return "stringVar=" + stringVar + ", doubleVar=" + doubleVar + ", integerVar=" + integerVar + ", shortVar=" + shortVar + ", byteVar=" + byteVar;
+    }
+    private String getMinimalDataAsString() {
+        String string = "";
+        string += stringVar == null ? "" : "stringVar=" + stringVar;
+        string += doubleVar == null ? "" : "doubleVar=" + doubleVar;
+        string += integerVar == null ? "" : "integerVar=" + integerVar;
+        string += shortVar == null ? "" : "shortVar=" + shortVar;
+        string += byteVar == null ? "" : "byteVar=" + byteVar;
+        string += string.isEmpty() ? "ALL_ARE_NULL!" : "";
+        return string;
     }
     public void printData() {
-        System.out.println("Printing PacketType data in PacketType.printData()...\nData : stringVar: " + stringVar + "\nData : doubleVar: " + doubleVar + "\nData : integerVar: " + integerVar + "\nData : shortVar: " + shortVar + "\nData : byteVar: " + byteVar);
+        System.out.println("Printing PacketType data in PacketType.printData()...\nData : " + getDataAsString());
+    }
+    @Override
+    public String toString() {
+        return getDataAsString();
+    }
+    public String toMinimalString() {
+        return getMinimalDataAsString();
     }
 }

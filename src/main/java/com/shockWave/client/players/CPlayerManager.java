@@ -7,7 +7,7 @@ import java.util.Map;
 import com.shockWave.engine.EngineCalculator;
 
 public class CPlayerManager { // This actually manages CSimplePlayers
-    private Map<Short, CSimplePlayer> playerMap = new HashMap<Short, CSimplePlayer>();
+    public Map<Short, CSimplePlayer> playerMap = new HashMap<Short, CSimplePlayer>();
 
     public CPlayerManager() {}
 
@@ -28,5 +28,10 @@ public class CPlayerManager { // This actually manages CSimplePlayers
     }
     public void removePlayer(Short id) {
         if (playerMap.containsKey(id)) {playerMap.remove(id);}
+    }
+    public void interpolatePlayerMovement() {
+        for (CSimplePlayer csp : playerMap.values()) {
+            csp.interpolateMovement();
+        }
     }
 }

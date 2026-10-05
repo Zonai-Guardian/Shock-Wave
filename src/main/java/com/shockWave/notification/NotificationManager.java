@@ -48,11 +48,13 @@ public class NotificationManager {
             if (i == 0) {
                 nextYValue += rect.height;
             }
-            if (isLastNotification) {
+            if (isLastNotification && hasAddedNewNotification) {
+                // The notification that was just added
+                noti.addTargetPosition(new Point(xValue + rect.width, nextYValue));
                 noti.addTargetPosition(new Point(xValue, nextYValue));
-                noti.addTargetPosition(new Point(xValue - rect.width, nextYValue));
+                noti.setCreationVars();
             } else {
-                noti.addTargetPosition(new Point(xValue - rect.width, nextYValue));
+                noti.addTargetPosition(new Point(xValue, nextYValue));
                 nextYValue += notificationSpacing + rect.height;
             }
         }

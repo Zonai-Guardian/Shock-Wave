@@ -6,6 +6,12 @@ Version numbers and what they added or changed:
 			changed most files to be SW instead of SoE,
 			worked on networking,
 			added blocking queue for inputs
+0.2.0 - Made networking mostly work,
+			made Sockets work to send packets,
+			majorly improved thread safety (although it's still not great),
+			fixed client rendering,
+			fixed networking errors,
+			added some menus,
 
 
 

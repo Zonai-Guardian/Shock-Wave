@@ -77,13 +77,17 @@ public class Game implements Runnable {
     public static Point2D.Double displayScale = new Point2D.Double(1.0, 1.0);
     public static Point displayOffset = new Point(0, 0);
     //windowed or full-screen
-    public static Dimension windowedSize = new Dimension(960, 540);
-    public static boolean fullScreen = true;
+    public static Dimension windowedSize = new Dimension(gameResolution.width / 2, gameResolution.height / 2);
+    public static boolean fullScreen = false;
 
     //game loop vars
     private int fps = 0;
-    public static final int TARGET_UPS = 60;
+    private int pgsps = 0;
+    public static final int TARGET_UPS = 60; // Updates Per Second
+    public static final int TARGET_PGSPS = 20; // Packet Groups Sent Per Second
     private final double TIME_BETWEEN_UPDATES = 1000000000 / TARGET_UPS;
+    private final double TIME_BETWEEN_SENDING_PACKETS = 1000000000 / TARGET_PGSPS;
+    public static volatile boolean shouldSendPackets = false; // This tells a separate thread when to send packets, don't know if/how well it works...
     
     public String elementBeingLoaded = "Nothing";
     public Double loadDataProgress = 0.0;
@@ -97,7 +101,7 @@ public class Game implements Runnable {
     public static Client client = null; //this will handle the in-game stuff like moving.
     public static Server server = null; //this will handle hosting the game on LAN for others to join.
 
-    public static boolean isGameFrozen = false; // This can freeze the game
+    public static boolean isGameFrozen = false; // This can freeze the game and is toggled by the action "freeze"
 
     // Nearly all enums are kept here in Game.java
     // enums (being static makes them belong to the class, not the object)
@@ -120,7 +124,7 @@ public class Game implements Runnable {
     //game state stuff
     public static HostOrGuest hostOrGuest = HostOrGuest.MENUS;
     public static GameState gameState = GameState.STARTUP;
-    public static ControlType controllType = ControlType.KEYBOARD_AND_MOUSE;
+    public static ControlType controllType = ControlType.KEYBOARD_AND_MOUSE; // currently not really used
     
     //libraries
     public static ImageLibrary images = new ImageLibrary();
@@ -151,7 +155,6 @@ public class Game implements Runnable {
 
     public void start() {
         frame = new JFrame("Shock Wave");
-        frame.setPreferredSize(new Dimension(gameResolution.width / 2, gameResolution.height / 2));
 
         frame.setPreferredSize(windowedSize);
         panel = new GamePanel();
@@ -223,8 +226,10 @@ public class Game implements Runnable {
     public void run() {
         //start game (client will start later)
         long lastUpdateTime = System.nanoTime();
+        long lastPacketGroupSendTime = System.nanoTime();
         long timer = System.currentTimeMillis();
         int updates = 0;
+        int packetGroupsSent = 0;
         
         while (true) {
             long now = System.nanoTime();
@@ -232,16 +237,26 @@ public class Game implements Runnable {
             // Update game logic
             if (now - lastUpdateTime >= TIME_BETWEEN_UPDATES) {
                 updateGame((now - lastUpdateTime) / TIME_BETWEEN_UPDATES);
-                if (client != null && updates % 3 == 0) {client.socketManager.handleSendingPackets();} // called every 3 frames (20 times per second)
                 updates++;
                 lastUpdateTime += TIME_BETWEEN_UPDATES;
+            }
+
+            // Having a separate tracker for sending packets makes sure that if the game loop is running very slow then sending packets doesn't necessarily have to be slow too.
+            // Tell separate thread to send packets
+            if (now - lastPacketGroupSendTime >= TIME_BETWEEN_SENDING_PACKETS) {
+                if (client != null) {shouldSendPackets = true;}
+                packetGroupsSent++;
+                lastPacketGroupSendTime += TIME_BETWEEN_SENDING_PACKETS;
             }
 
             // Print FPS and UPS every second
             if (System.currentTimeMillis() - timer >= 1000) {
                 if (updates < 40) {System.out.println("FPS: " + updates);} // prints if fps drops below 40
+                if (packetGroupsSent < 2) {System.out.println("PGSPS: " + packetGroupsSent);} // prints if pgsps (packet groups sent per second) drops below 15
                 fps = updates;
+                pgsps = packetGroupsSent;
                 updates = 0;
+                packetGroupsSent = 0;
                 timer += 1000;
             }
             
@@ -252,6 +267,8 @@ public class Game implements Runnable {
     public void startServer(int port) {
         Game.server = new Server(port);
         if (client != null) {gameState = GameState.PLAY;}
+        String message = "Connect locally with \"" + server.socketManager.getLocalAddress() + "\" or globaly with \"" + server.socketManager.getGlobalAddress() + "\"";
+        notificationManager.addNotification(new Notification("Successfully Started Server", message, "success", 30.0));
     }
     public static void shutDownServer() {
         if (server != null) {server.shutDown();}
@@ -265,7 +282,14 @@ public class Game implements Runnable {
     public void startClient(String displayName, InetAddress serverAddress, int serverPort) {
         // Should start the client
         client = new Client(displayName, serverAddress, serverPort);
-        if (server != null) {gameState = GameState.PLAY;}
+        if (client.socketManager.isConnected) {
+            gameState = GameState.PLAY;
+            notificationManager.addNotification(new Notification("Successfully Connected To Server", "Server accepted connection", "success", 5.0));
+        } else {
+            notificationManager.addNotification(new Notification("Failed To Connect To Server", "Connecting to the server was rejected by the server", "error", 5.0));
+            client = null;
+        }
+        
     }
 
     // Loaders
@@ -410,10 +434,10 @@ public class Game implements Runnable {
                         isValid = false;
                     }
                     if (isValid) {
-                        System.out.println("Starting Server from GButton! Address: " + address + ", Port: " + port);
+                        System.out.println("Starting Client from GButton! Address: " + address + ", Port: " + port);
                         startClient(nameText, address, port);
                     } else {
-                        // bookmark
+                        notificationManager.addNotification(new Notification("Failed To Join Server", "Failed to join server with address and port " + address + ":" + port, "error", 3.0));
                     }
                 }
             };
@@ -542,7 +566,7 @@ public class Game implements Runnable {
 
         //handle buttons, ui, etc.
     }
-    public void activateAction(String action, boolean wasPressed) {
+    public void handleAction(String action, boolean wasPressed) {
         inputQueue.add(new InputPlaceHolder(action, wasPressed));
     }
     private void handleInputs() {
@@ -550,67 +574,81 @@ public class Game implements Runnable {
         inputQueue.drainTo(inputs);
         
         for (InputPlaceHolder input : inputs) {
-            String action = input.action;
-            boolean wasPressed = input.wasPressed;
+            activateAction(input.action, input.wasPressed);
+        }
+    }
+    public void activateAction(String action, boolean wasPressed) {
 
-            if (wasPressed) {
-                // Action was ended/released
-                switch (action) {
-                    case "back":
-                        menuManager.goBackPath(null);
-                        break;
-                    case "force_quit":
-                        if (keyboard.heldKeys.contains("ctrl")) {Game.exitGame(0);}
-                        break;
-                    case "vibrate_up":
-                        controller.startVibration(1.0, 1.0, 250);
-                        break;
-                    case "vibrate_right":
-                        controller.startVibration(0.0, 0.5, 100);
-                        break;
-                    case "vibrate_left":
-                        controller.startVibration(0.5, 0.0, 100);
-                        break;
-                    case "vibrate_down":
-                        controller.startVibration(0.3, 0.3, 50);
-                        break;
-                    case "click":
-                        //handle clicking buttons, selecting sliders, etc.
-                        switch (controllType) {
-                            case KEYBOARD_AND_MOUSE:
-                                menuManager.handleMenuMouseClick();
-                                break;
-                            case CONTROLLER:
-                                menuManager.handleMenuControllerClick();
-                                break;
-                        }
-                        break;
-                    case "attack":
-                        //System.out.println("Attack!");
-                        break;
-                    case "freeze":
-                        isGameFrozen = !isGameFrozen;
-                        break;
-                    case "notification":
-                        notificationManager.addNotification(new Notification("Test Notification " + EngineCalculator.randomRange(0, 10), "Randomly generated numbers: " + EngineCalculator.randomRange(0, 50), "successIcon", 5.0));
-                        break;
-                    case "copy":
-                        if (Game.keyboard.heldKeys.contains("ctrl")) {Game.menuManager.textManager.handleKey("copy");}
-                        break;
-                    case "paste":
-                        if (Game.keyboard.heldKeys.contains("ctrl")) {Game.menuManager.textManager.handleKey("paste");}
-                        break;
-                    default:
-                        System.out.println("Un-handled action \"" + action + "\" in Game.activateAction()");
-                        break;
-                }
-            } else {
-                // Action was started/pressed
-                switch (action) {
-                    default:
-                        // Nothing needs to be printed when the release of an action is not handled.
-                        break;
-                }
+        if (wasPressed) {
+            // Action was ended/released
+            switch (action) {
+                case "back":
+                    menuManager.goBackPath(null);
+                    break;
+                case "force_quit":
+                    if (keyboard.heldKeys.contains("ctrl")) {Game.exitGame(0);}
+                    break;
+                case "vibrate_up":
+                    controller.startVibration(1.0, 1.0, 250);
+                    break;
+                case "vibrate_right":
+                    controller.startVibration(0.0, 0.5, 100);
+                    break;
+                case "vibrate_left":
+                    controller.startVibration(0.5, 0.0, 100);
+                    break;
+                case "vibrate_down":
+                    controller.startVibration(0.3, 0.3, 50);
+                    break;
+                case "click":
+                    //handle clicking buttons, selecting sliders, etc.
+                    switch (controllType) {
+                        case KEYBOARD_AND_MOUSE:
+                            menuManager.handleMenuMouseClick();
+                            break;
+                        case CONTROLLER:
+                            menuManager.handleMenuControllerClick();
+                            break;
+                    }
+                    break;
+                case "attack":
+                    //System.out.println("Attack!");
+                    break;
+                case "freeze":
+                    isGameFrozen = !isGameFrozen;
+                    break;
+                case "notification":
+                    notificationManager.addNotification(new Notification("Test Notification " + EngineCalculator.randomRange(0, 10), "Randomly generated numbers: " + EngineCalculator.randomRange(0, 50), "successIcon", 5.0));
+                    break;
+                case "copy":
+                    if (Game.keyboard.heldKeys.contains("ctrl")) {Game.menuManager.textManager.handleKey("copy");}
+                    break;
+                case "paste":
+                    if (Game.keyboard.heldKeys.contains("ctrl")) {Game.menuManager.textManager.handleKey("paste");}
+                    break;
+                default:
+                    if (client != null) {
+                        client.handleInput(action, wasPressed);
+                    }
+                    //System.out.println("Un-handled action \"" + action + "\" in Game.activateAction()");
+                    break;
+            }
+        } else {
+            // Action was started/pressed
+            switch (action) {
+                default:
+                    // Nothing needs to be printed when the release of an action is not handled.
+                    break;
+            }
+        }
+    }
+    public void updateInputs(double delta) {
+        ArrayList<String> actionsHeld = new ArrayList<>(keyBindings.actionsHeld); // Prevents the game throwing a ConcurrentModificationException
+        for (String action : actionsHeld) {
+            switch (action) {
+                default:
+                    if (client != null) {client.updateInput(action, delta);}
+                    break;
             }
         }
     }
@@ -625,6 +663,7 @@ public class Game implements Runnable {
         if (controllType == ControlType.CONTROLLER && controller.shouldChangeControlType()) {controllType = ControlType.KEYBOARD_AND_MOUSE;} // Switch to keyboard and mouse if controller has been disconnected
 
         handleInputs();
+        updateInputs(delta);
         
         boolean updateMenus = true; // makes menuManager not get updated if the gameState is certains values
         switch (gameState) {

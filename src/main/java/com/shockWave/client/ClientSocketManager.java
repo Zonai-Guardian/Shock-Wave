@@ -1,6 +1,7 @@
 package com.shockWave.client;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -23,7 +24,11 @@ public class ClientSocketManager {
     
     // Server Connection Stuff
     public boolean isHost = false;
-    public boolean shouldStopClient = false;
+    public boolean isConnected = false;
+    public volatile boolean shouldShutDown = false;
+    public volatile boolean isPacketReceivingThreadRunning = false;
+    public volatile boolean isDatagramPacketReceivingThreadRunning = false;
+
     public InetAddress serverAddress = null;
     public Integer serverPort = null; // accepts null
 
@@ -50,6 +55,7 @@ public class ClientSocketManager {
     }
     public ClientSocketManager() {
         isHost = true;
+        isConnected = true;
     }
 
     private void startSocket() {
@@ -57,11 +63,13 @@ public class ClientSocketManager {
             socket = new Socket(serverAddress, serverPort);
             socketInputStream = new DataInputStream(socket.getInputStream());
             socketOutputStream = new DataOutputStream(socket.getOutputStream());
-
+            
             new Thread(() -> {receivePackets();}).start();
+            isConnected = true;
         } catch (IOException e) {
             System.out.println("Failed to open socket, inputStream, or outputStream in ClientSocketManager.startSocket()!");
             EngineCalculator.printExceptionInfo(e);
+            isConnected = false;
         }
         // Datagram Socket
         if (datagramSocket == null) {
@@ -78,7 +86,7 @@ public class ClientSocketManager {
     }
 
     public void shutDownClient() {
-        shouldStopClient = true;
+        shouldShutDown = true;
         // idk what else to do at the moment
     }
 
@@ -94,10 +102,7 @@ public class ClientSocketManager {
         }
         return receivedPackets;
     }
-    public void handleSendingPackets() {
-        sendPackets();
-    }
-    private void sendPackets() {
+    public void sendPackets() {
 
         // This sends them via Sockets and DatagramSockets or puts them in packetsForDevice
         if (isHost) {
@@ -118,16 +123,37 @@ public class ClientSocketManager {
                 }
             }
 
-            PacketManager.writePacketsToOutputStream(datagramOutputStream, datagramPackets);
-            // #InDev  #Warning  The previous line of code needs to be checked to make sure that there is nothing else needed to send a datagram packet!!!!
+            if (datagramPackets.isEmpty() == false) {
+                // Send packets with DatagramSocket
+                ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+                try {
+                    datagramOutputStream = new DataOutputStream(byteStream);
 
-            PacketManager.writePacketsToOutputStream(socketOutputStream, socketPackets);
-            // This should be good...
+                    PacketManager.writePacketsToOutputStream(datagramOutputStream, datagramPackets);
+
+                    byte[] buffer = byteStream.toByteArray();
+                    
+                    DatagramPacket datagramPacket = new DatagramPacket(buffer, buffer.length, serverAddress, serverPort);
+                    datagramSocket.send(datagramPacket);
+                } catch (IOException e) {
+                    System.out.println("Failed to fill and send Datagram Packet in ServerSocketManager.handleSendingPackets()! Info: ");
+                    EngineCalculator.printExceptionInfo(e);
+                }
+            }
+
+            if (socketPackets.isEmpty() == false) {
+                PacketManager.writePacketsToOutputStream(socketOutputStream, socketPackets);
+                
+            System.out.println("Packet Success 1!");
+                // This should be good...
+            }
         }
     }
 
     private void receivePackets() { // !!! !WARNING! this method occupies the thread until the server goes offline!!!
-        while (shouldStopClient == false) {
+        isPacketReceivingThreadRunning = true;
+
+        while (shouldShutDown == false) {
             if (socket.isConnected()) {
                 ArrayList<Packet> packets = PacketManager.readPacketsFromInputStream(socketInputStream, -1);
                 for (Packet packet : packets) {
@@ -135,9 +161,14 @@ public class ClientSocketManager {
                 }
             }
         }
+        
+        // Thread is about to end, set variable to indicate that this thread is stopped
+        isPacketReceivingThreadRunning = true;
     }
     private void receiveDatagramPackets() { // !!! !WARNING! this method occupies the thread until the server goes offline!!!
-        while (shouldStopClient == false) {
+        isDatagramPacketReceivingThreadRunning = true;
+
+        while (shouldShutDown == false) {
             try {
                 // Create byte array
                 byte[] reveiveBuffer = new byte[1024];
@@ -166,6 +197,15 @@ public class ClientSocketManager {
                 EngineCalculator.printExceptionInfo(e);
             }
         }
+
+        isDatagramPacketReceivingThreadRunning = false;
     }
-    
+    public boolean isReadyToShutDown() {
+        return isPacketReceivingThreadRunning && isDatagramPacketReceivingThreadRunning;
+    }
+    public void addPurposeToGenerate(PacketPurpose purpose) {
+        if (packetsToGenerate.contains(purpose) == false) {
+            packetsToGenerate.add(purpose);
+        }
+    }
 }

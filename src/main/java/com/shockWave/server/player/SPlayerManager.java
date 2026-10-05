@@ -26,4 +26,7 @@ public class SPlayerManager {
     public void setPlayerName(short id, String displayName) {
         getPlayer(id).displayName = displayName;
     }
+    public Map<Short, SPlayer> getPlayerMap() {
+        return players;
+    }
 }

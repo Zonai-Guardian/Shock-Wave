@@ -159,9 +159,19 @@ public class MenuManager {
     }
     public void goBackPath(Direction5 newAnimationDirection) {
         deselectAllComponents(getActiveMenuName());
-        if (menuPath.size() > 1) {
+
+        String preferedPreviousMenuName = getMenu(getActiveMenuName()).getPreferedPreviousMenu();
+        if (preferedPreviousMenuName == null) {
+            if (menuPath.size() > 1) {
+                previousMenu = getActiveMenuName();
+                menuPath.remove(menuPath.size() - 1);
+                resetMenuVars();
+                animationDirection = newAnimationDirection == null ? defaultBackAnimationDirection : newAnimationDirection;
+            }
+        } else {
             previousMenu = getActiveMenuName();
-            menuPath.remove(menuPath.size() - 1);
+            menuPath.clear();
+            menuPath.add(preferedPreviousMenuName);
             resetMenuVars();
             animationDirection = newAnimationDirection == null ? defaultBackAnimationDirection : newAnimationDirection;
         }
@@ -187,17 +197,19 @@ public class MenuManager {
     // Getters
     public Menu getMenu(String menuName) {
         if (menuName.startsWith("c_")) { // Client Menu
-            //access at a different location or through instance of Client.java
-            System.out.println("Could not find menu \"" + menuName + "\" with prefix \"c_\" due to #InDev in MenuManager.getMenu()");
-            return null; //  #InDev  needs to return a menu from an instance of Client.java if gameStatus is PLAY
+            return getMenuFromMap(menuName); // Do nothing special, if client has ever been innitialized it will have added the necessary menus to menuMap using Game.manuManager.addMenu()
+            //System.out.println("Could not find menu \"" + menuName + "\" with prefix \"c_\" due to #InDev in MenuManager.getMenu()");
         } else {
-            if (menuMap.containsKey(menuName)) {
-                return menuMap.get(menuName);
-            } else {
-                System.out.println("There is not a Menu in menuMap for menuName \"" + menuName + "\" in MenuManager.getMenu()");
-                EngineCalculator.printStackTrace();
-                return null;
-            }
+            return getMenuFromMap(menuName);
+        }
+    }
+    private Menu getMenuFromMap(String menuName) {
+        if (menuMap.containsKey(menuName)) {
+            return menuMap.get(menuName);
+        } else {
+            System.out.println("There is not a Menu in menuMap for menuName \"" + menuName + "\" in MenuManager.getMenuFromMap()");
+            EngineCalculator.printStackTrace();
+            return null;
         }
     }
     public String getActiveMenuName() {
@@ -352,7 +364,7 @@ public class MenuManager {
     private void renderShading(String menuName, Graphics2D g) {
         boolean shouldRenderShading = false;
 
-        if (shouldRenderShading) {
+        if (getMenu(menuName).shadingDirection != null && (shouldRenderShading || getMenu(menuName).shouldRenderShading)) {
             String shadingDirection = getMenu(menuName).shadingDirection.toString();
             String imageName = "menuShading" + shadingDirection.charAt(0) + shadingDirection.substring(1).toLowerCase();
             g.drawImage(Game.images.get(imageName), 0, 0, null);

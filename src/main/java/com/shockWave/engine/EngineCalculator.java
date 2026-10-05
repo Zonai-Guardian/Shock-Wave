@@ -9,6 +9,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shockWave.Game;
 import com.shockWave.Game.Direction4;
 import com.shockWave.Game.Direction5;
+import com.shockWave.networking.Packet;
+import com.shockWave.networking.PacketType;
 import com.shockWave.networking.PacketManager.PacketDataType;
 import com.shockWave.networking.PacketManager.PacketPurpose;
 
@@ -56,7 +58,14 @@ public class EngineCalculator {
         System.out.println("Message:\n" + e.getMessage() + "\nCause:\n" + e.getCause() + "\nStack Trace:\n");
         e.printStackTrace();
     }
-
+    public static void printList(ArrayList<Point> list) {
+        String string = "ArrayList<Point>[";
+        for (Point p : list) {
+            string += "Point{" + p.x + ", " + p.y + "} ";
+        }
+        string += "]";
+        System.out.println(string);
+    }
     public static Direction5 getOppositeDirection(Direction5 originalDirection) {
         if (originalDirection == null) {
             return null;
@@ -793,7 +802,21 @@ public class EngineCalculator {
         }
         return false;
     }
+    public static ArrayList<Packet> getNewPacketList(ArrayList<Packet> packets) {
+        ArrayList<Packet> newPackets = new ArrayList<>();
 
+        for (Packet packet : packets) {
+            newPackets.add(EngineCalculator.getNewPacket(packet));
+        }
+        return newPackets;
+    }
+    public static Packet getNewPacket(Packet packet) {
+        Packet newPacket = new Packet(packet.packetPurpose, packet.toFromID);
+        for (PacketType pt : packet.types) {
+            newPacket.types.add(new PacketType(pt));
+        }
+        return newPacket;
+    }
     public static <T extends Enum<T>> void printEnumValues(Class<T> enumClass) {
         // Retrieves an array of all constants in this enum
         T[] constants = enumClass.getEnumConstants();

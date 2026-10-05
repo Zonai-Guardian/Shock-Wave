@@ -74,6 +74,7 @@ public class ServerSocketHandler {
                 if (clientSocket.isConnected()) {
                     ArrayList<Packet> packets = PacketManager.readPacketsFromInputStream(inputStream, Game.server.socketManager.getClientID(clientAddress, clientPort));
                     for (Packet packet : packets) {
+                        System.out.println("Received a packet via a Socket!");
                         Game.server.socketManager.packetsReceived.add(packet);
                     }
                 }

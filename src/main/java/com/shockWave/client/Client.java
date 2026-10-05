@@ -1,22 +1,40 @@
 package com.shockWave.client;
 
+import java.awt.BasicStroke;
 import java.awt.Color;
+import java.awt.Font;
+import java.awt.FontMetrics;
 import java.awt.Graphics2D;
+import java.awt.List;
+import java.awt.Point;
+import java.awt.Polygon;
 import java.awt.Rectangle;
+import java.lang.reflect.Array;
 import java.net.InetAddress;
 import java.util.ArrayList;
+import java.util.Arrays;
 
 import com.shockWave.Game;
+import com.shockWave.Game.Direction4;
+import com.shockWave.Game.Direction5;
+import com.shockWave.Game.Direction8;
 import com.shockWave.client.players.CPlayer;
 import com.shockWave.client.players.CPlayerManager;
 import com.shockWave.client.players.CSimplePlayer;
 import com.shockWave.engine.EngineCalculator;
+import com.shockWave.graphics.Menu;
+import com.shockWave.graphics.MenuManager;
 import com.shockWave.graphics.RenderEngine;
+import com.shockWave.graphics.g_components.GButton;
+import com.shockWave.graphics.g_components.GComponent;
+import com.shockWave.graphics.g_components.GComponent.GComponentSizes;
 import com.shockWave.networking.Packet;
+import com.shockWave.networking.PacketManager.PacketDataType;
 import com.shockWave.networking.PacketManager.PacketPurpose;
 
 public class Client {
     public ClientSocketManager socketManager;
+    private int packetGenerationTick = 0;
 
     // enums
     public static enum ClientState {STARTUP, LOADING, CONNECTING, RUNNING, EXITING, LOST_CONNECTION} // I don't know if I'll actually use all of these...
@@ -41,13 +59,92 @@ public class Client {
 
     public void loadAllData() {
         //load all required data to run the client
+        loadMenus();
 
         socketManager.packetsToGenerate.add(PacketPurpose.REGISTER_PLAYER_TO_SERVER_S1);
         clientState = ClientState.CONNECTING;
     }
-    public void handleInput(ArrayList<String> buttonInputs, ArrayList<String> actionInputs) {
+    private void loadMenus() {
+        Menu menu = new Menu("c_play"){
+            @Override
+            public String getPreferedPreviousMenu() {
+                return "c_pause";
+            }
+        };
+        Game.menuManager.addMenu(menu);
+        menu = new Menu("c_pause"){
+            @Override
+            public String getPreferedPreviousMenu() {
+                return "c_play";
+            }
+        };
+        menu.shadingDirection = Direction5.LEFT;
+        menu.shouldRenderShading = true; // Overrides shading being off my default
+        GButton gb = new GButton(){
+            @Override 
+            public void activateComponent() {
+                Game.menuManager.addToPath("c_play", Direction5.LEFT);
+            }
+        };
+        gb.setCommons("Resume Game", "Continue playing the game");
+        gb.setDisplayRect(new Point(300, 700), GComponentSizes.LARGE, Direction8.CENTER_CENTER);
+        menu.addGComponent(gb);
+        Game.menuManager.addMenu(menu);
+        
+    }
+    public void handleInput(String action, boolean wasPressed) { // This method handles actions that need things done when they get pressed or released
         //handle what to do when buttons are pressed and actions are activated
+        if (wasPressed) { // Handle Presses
+            switch (action) {
+                
+            }
+        } else { // Handle Releases
+            switch (action) {
 
+            }
+        }
+    }
+    public void updateInput(String action, double delta) { // This method handles actions that need things done as they are being held down
+        switch (action) {
+            case "move_south":
+                if (player != null) {
+                    if (Game.keyBindings.actionsHeld.contains("move_north") == false) {
+                        player.testMove(Direction4.SOUTH, delta);
+                        // Both east and west are held down, or neither are held down
+                        if (((Game.keyBindings.actionsHeld.contains("move_east") == false) && (Game.keyBindings.actionsHeld.contains("move_west") == false)) || (Game.keyBindings.actionsHeld.contains("move_east") && Game.keyBindings.actionsHeld.contains("move_west"))) {
+                            player.direction = Direction4.SOUTH;
+                        }
+                    }
+                }
+                break;
+            case "move_west":
+                if (player != null) {
+                    if (Game.keyBindings.actionsHeld.contains("move_east") == false) {
+                        player.testMove(Direction4.WEST, delta);
+                        player.direction = Direction4.WEST;
+                    }
+                }
+                break;
+            case "move_north":
+                if (player != null) {
+                    if (Game.keyBindings.actionsHeld.contains("move_south") == false) {
+                        player.testMove(Direction4.NORTH, delta);
+                        // Both east and west are held down, or neither are held down
+                        if (((Game.keyBindings.actionsHeld.contains("move_east") == false) && (Game.keyBindings.actionsHeld.contains("move_west") == false)) || (Game.keyBindings.actionsHeld.contains("move_east") && Game.keyBindings.actionsHeld.contains("move_west"))) {
+                            player.direction = Direction4.NORTH;
+                        }
+                    }
+                }
+                break;
+            case "move_east":
+                if (player != null) {
+                    if (Game.keyBindings.actionsHeld.contains("move_west") == false) {
+                        player.testMove(Direction4.EAST, delta);
+                        player.direction = Direction4.EAST;
+                    }
+                }
+                break;
+        }
     }
     public void updateClient() {
         handleReceivedPackets();
@@ -57,7 +154,10 @@ public class Client {
             case STARTUP:
                 // It just needs to change ClientState to Loading
                 clientState = ClientState.LOADING;
-                new Thread(() -> {loadAllData();}).start(); // Start loading data on new Thread
+                new Thread(() -> {
+                    loadAllData();
+                    Game.menuManager.addToPath("c_play", null);
+                }).start(); // Start loading data on new Thread
                 break;
             case LOADING:
                 // Do nothing as the client's assets are being loaded...
@@ -66,7 +166,8 @@ public class Client {
                 // Do nothing...
                 break;
             case RUNNING:
-                // Do nothing...
+                if (player != null) {player.update();}
+                playerManager.interpolatePlayerMovement();
                 break;
             case EXITING:
                 // Do nothing...
@@ -76,60 +177,130 @@ public class Client {
                 break;
         }
         
-        generatePackets();
-        socketManager.handleSendingPackets();
+        if (Game.shouldSendPackets) {
+            Game.shouldSendPackets = false;
+            generatePackets();
+            socketManager.sendPackets();
+        }
     }
 
     private void handleReceivedPackets() {
-        for (Packet packet : socketManager.getReceivedPackets()) {
+        ArrayList<Packet> packetList = socketManager.getReceivedPackets(); // This will automatically get the device packets if the server is on this device.
+
+        for (Packet packet : packetList) {
+            System.out.println("    Receiving packet in Client with purpose: " +  EngineCalculator.shortToPacketPurpose(packet.packetPurpose));
+            
             switch (EngineCalculator.shortToPacketPurpose(packet.packetPurpose)) {
                 case DISCONNECT:
                     socketManager.shutDownClient();
                     break;
                 case REGISTER_PLAYER_TO_SERVER_S2:
+                    System.out.println("    Starting Register 2!!");
                     // bookmark
                     // Create new player-type (??) object in the server
                     player = new CPlayer(
                         playerDisplayName,
                         packet.readData().shortVar, //short id
+                        packet.readData().doubleVar.floatValue(), // double colorFloat
                         packet.readData().integerVar, // int posX
                         packet.readData().integerVar // int posY
                     );
-                    System.out.println("Success 4!");
+                    short idOrStop = 0;
+                    while ((idOrStop = packet.readData().shortVar) != -2) {
+                        playerManager.registerPlayer(new CSimplePlayer(
+                            idOrStop,
+                            packet.readData().stringVar,
+                            packet.readData().doubleVar.floatValue(),
+                            packet.readData().integerVar,
+                            packet.readData().integerVar,
+                            EngineCalculator.byteToDirection4(packet.readData().byteVar)
+                        ));
+                    }
+                    clientState = ClientState.RUNNING;
                     break;
-                case REGISTER_PLAYER_TO_CLIENT:
+                case UPDATE_PLAYER_TRANSFORM: // This will only be used if the server needs to move the client like if it should be teleported or something
+                    player.posX = packet.readData().integerVar;
+                    player.posY = packet.readData().integerVar;
+                    player.velocityX = packet.readData().doubleVar;
+                    player.velocityY = packet.readData().doubleVar;
+                    player.direction = EngineCalculator.byteToDirection4(packet.readData().byteVar);
+                    break;
+                case UPDATE_PLAYERS_TRANSFORM:
+                    //System.out.println(packet);
+
+                    short id = 0;
+                    while((id = packet.readData().shortVar) != -2) {
+                        if (playerManager.containsPlayer(id)) {
+                            CSimplePlayer sp = playerManager.getPlayer(id);
+                            sp.posX = packet.readData().integerVar;
+                            sp.posY = packet.readData().integerVar;
+                            sp.velocityX = packet.readData().integerVar;
+                            sp.velocityY = packet.readData().integerVar;
+                            sp.direction = EngineCalculator.byteToDirection4(packet.readData().byteVar);
+                            System.out.println("Received player data in Client! pos: " + sp.posX + ", " + sp.posY + ", id: " + id);
+                        } else {
+                            if (player != null && player.id != id) {System.out.println("Player data was sent but the Client has not registered a player with id " + id + " yet!");}
+                            // Skip this player because it has not been registered or it is this client's player
+                            packet.readData();
+                            packet.readData();
+                            packet.readData();
+                            packet.readData();
+                            packet.readData();
+                            if (player != null && player.id != id) {System.out.println("Skipped player with id " + id + " in Client.handleReceivedPackets()! Skipping and continueing as normal...");}
+                        }
+                    }
+                    break;
+                case REGISTER_NEW_PLAYER_TO_CLIENT:
                     // String name, Short id, Int posX, Int posY, Byte Direction4
-                    
-                    playerManager.registerPlayer(new CSimplePlayer(
-                        packet.readData().stringVar, // string name
-                        packet.readData().shortVar, //short id
-                        packet.readData().integerVar, // int posX
-                        packet.readData().integerVar, // int posY
-                        EngineCalculator.byteToDirection4(packet.readData().byteVar)
-                    ));
-                    break;
-                case PACKET_TEST:
-                    System.out.println("Int: " + packet.readData().integerVar + ", String: " + packet.readData().stringVar + ", Double: " + packet.readData().doubleVar);
+                    short id2 = packet.readData().shortVar;
+                    if ((player.id == id2) == false && playerManager.containsPlayer(id2) == false) {
+                        playerManager.registerPlayer(new CSimplePlayer(
+                            id2, //short id
+                            packet.readData().stringVar, // string name
+                            packet.readData().doubleVar.floatValue(), // float colorFloat
+                            packet.readData().integerVar, // int posX
+                            packet.readData().integerVar, // int posY
+                            EngineCalculator.byteToDirection4(packet.readData().byteVar)
+                        ));
+                    } else {
+                        // Skip registering because player already exists in this client
+                        packet.readData();
+                        packet.readData();
+                        packet.readData();
+                        packet.readData();
+                    }
                     break;
             }
         }
     }
     private void generatePackets() {
+        if (clientState == ClientState.RUNNING) {
+            packetGenerationTick++;
+            if (packetGenerationTick > 1) {
+                packetGenerationTick = 0;
+                socketManager.addPurposeToGenerate(PacketPurpose.UPDATE_PLAYER_TRANSFORM);
+            }
+        }
+
         ArrayList<PacketPurpose> purposes = new ArrayList<>();
         socketManager.packetsToGenerate.drainTo(purposes);
 
         for (PacketPurpose purpose : purposes) {
-            Packet packet = new Packet(EngineCalculator.enumToShort(PacketPurpose.class, purpose), -1);;
+            System.out.println("    Generating packet in Client with purpose: " + purpose);
+
+            Packet packet = new Packet(EngineCalculator.enumToShort(PacketPurpose.class, purpose), -1);
             switch (purpose) {
                 case REGISTER_PLAYER_TO_SERVER_S1:
                     // string displayName
                     packet.writeData(playerDisplayName);
                     System.out.println("Success 1!");
                     break;
-                case PACKET_TEST:
-                    packet.writeData((2026));
-                    packet.writeData("This is a packet string!");
-                    packet.writeData(0.123456789);
+                case UPDATE_PLAYER_TRANSFORM:
+                    packet.writeData((int)player.posX);
+                    packet.writeData((int)player.posY);
+                    packet.writeData(player.velocityX);
+                    packet.writeData(player.velocityY);
+                    packet.writeData(EngineCalculator.enumToByte(Direction4.class, player.direction));
                     break;
             }
             socketManager.packetsToSend.add(packet);
@@ -140,7 +311,8 @@ public class Client {
     public void render(Graphics2D g) {
         //render everything the client should
         //g.fillRect(0, 0, Game.gameResolution.width, Game.gameResolution.height);
-        
+        g.setFont(new Font("Sanserif", Font.BOLD, 50));
+
         switch (clientState) {
             case STARTUP:
                 // Starting the client
@@ -149,16 +321,23 @@ public class Client {
                 break;
             case LOADING:
                 // Loading client assets
+                g.setColor(Color.DARK_GRAY);
+                g.fillRect(0, 0, Game.gameResolution.width, Game.gameResolution.height);
                 g.setColor(Color.BLACK);
                 RenderEngine.drawTextCenteredInRect(new Rectangle(0, 0, Game.gameResolution.width, Game.gameResolution.height), "Loading Client Assets...", g);
                 break;
             case CONNECTING:
                 // Starting the client
+                g.setColor(Color.GRAY);
+                g.fillRect(0, 0, Game.gameResolution.width, Game.gameResolution.height);
                 g.setColor(Color.BLACK);
                 RenderEngine.drawTextCenteredInRect(new Rectangle(0, 0, Game.gameResolution.width, Game.gameResolution.height), "Connecting to Server...", g);
                 break;
             case RUNNING:
                 // draw players, objects, scene, etc.
+                g.setColor(Color.CYAN);
+                g.fillRect(0, 0, Game.gameResolution.width, Game.gameResolution.height);
+                renderPlayers(g);
                 break;
             case EXITING:
                 // idk when this would be used
@@ -171,5 +350,78 @@ public class Client {
                 RenderEngine.drawTextCenteredInRect(new Rectangle(0, 0, Game.gameResolution.width, Game.gameResolution.height), "Lost Connection...", g);
                 break;
         }
+    }
+    public void renderPlayers(Graphics2D g) {
+
+        for (CSimplePlayer sp : playerManager.playerMap.values()) {
+            renderPlayer(sp.posX, sp.posY, sp.direction, sp.colorFloat, g);
+        }
+        for (CSimplePlayer sp : playerManager.playerMap.values()) {
+            renderPlayerName(sp.posX, sp.posY, sp.displayName, sp.direction, g);
+        }
+        renderPlayer((int)player.posX, (int)player.posY, player.direction, player.colorFloat, g);
+        renderPlayerName((int)player.posX, (int)player.posY, player.displayName, player.direction, g);
+    }
+    public void renderPlayer(int x, int y, Direction4 direction, float colorFloat, Graphics2D g) {
+        Color color = Color.getHSBColor(colorFloat, 1.0f, 1.0f);
+        int size = 30;
+        int hs = size / 2; // hs is for Half Size
+        boolean simple = false;
+
+        if (simple == false) { // Complex player rendering
+            double em = 0.5; // em is for Edge Multiplier
+            ArrayList<Point> points = new ArrayList<Point>(Arrays.asList(new Point[]{
+                new Point(-hs, (int)(hs * em)),          // bottom left
+                new Point(-hs, -hs),         // top left
+                new Point(hs, -hs),          // top right
+                new Point(hs, (int)(hs * em)),
+                new Point((int)(hs * 1.5), (int)(hs * em)),
+                new Point(0, (int)(hs * 2)),
+                new Point((int)(-hs * 1.5), (int)(hs * em))
+            }));
+            for (Point p : points) {
+                p.x += x;
+                p.y += y;
+            }
+
+            if (direction != Direction4.SOUTH) {
+                int angle = 0;
+                switch (direction) {
+                    case WEST:
+                        angle = 90;
+                        break;
+                    case NORTH:
+                        angle = 180;
+                        break;
+                    case EAST:
+                        angle = 270;
+                        break;
+                }
+                for (int i = points.size() - 1; i >= 0; i--) {
+                    points.set(i, EngineCalculator.rotatePoint(new Point(x, y), points.get(i), (double)angle));
+                }
+            }
+            Polygon polygon = EngineCalculator.pointsToPolygon(points);
+            g.setColor(color);
+            g.fillPolygon(polygon);
+            g.setColor(Color.BLACK);
+            g.setStroke(new BasicStroke(5));
+            g.drawPolygon(polygon);
+            g.setStroke(new BasicStroke(1));
+        } else { // Simple player rendering
+            g.setColor(color);
+            g.fillRect(x - size / 2, y - size / 2, size, size);
+            g.setFont(new Font("Sanserif", Font.PLAIN, 20));
+            g.setColor(Color.BLACK);
+        }
+    }
+    public void renderPlayerName(int x, int y, String playerDisplayName, Direction4 playerDirection, Graphics2D g) {
+        FontMetrics fm = g.getFontMetrics();
+        int nameWidth = fm.stringWidth(playerDisplayName);
+
+        g.setColor(Color.BLACK);
+        g.setFont(new Font("Sanserif", Font.PLAIN, 40));
+        g.drawString(playerDisplayName, x - nameWidth / 2, y - 40);
+        //g.drawString(playerDirection.toString(), x, y);
     }
 }

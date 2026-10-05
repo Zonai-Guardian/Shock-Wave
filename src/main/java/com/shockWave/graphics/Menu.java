@@ -26,6 +26,8 @@ public class Menu {
     private Map<Integer, GComponent> components = new TreeMap<Integer, GComponent>();
     public Rectangle controllerSelectionRectsBounds = new Rectangle(0, 0);
 
+    public boolean shouldRenderShading = false;
+
     public Menu(String name) {
         this.name = name;
     }
@@ -144,6 +146,10 @@ public class Menu {
             }
         }
         return false;
+    }
+    public String getPreferedPreviousMenu() { // Primarily For Overriding
+        // This method is for if a specific menu needs to go to a special menu instead of going back in the menu path.
+        return null;
     }
 
     // Rendering

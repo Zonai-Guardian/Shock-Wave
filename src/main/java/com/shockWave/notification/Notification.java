@@ -34,7 +34,7 @@ public class Notification {
     private Point currentPosition = null;
     private Point previousPosition = null;
     private int animationFrame = 0;
-    private int maxAnimationFrame = 40;
+    private int maxAnimationFrame = 30;
     private int displayFrame = 0;
     public boolean shouldDeleteSoon = false;
     public boolean shouldDeleteNow = false;
@@ -42,11 +42,11 @@ public class Notification {
     //    Render Vars (this should save some rendering power by calculating sizes only once for each Notification)
     // Pre Made
     private int distanceFromEdge = 30;
-    private int internalBoarder = 20; // This will be the distance between the icon and title, title and message, etc.
-    private int border = 15;
-    private int margin = 40;
-    private int edgeRoundedRadius = 15;
-    private int iconSize = 64;
+    private int internalBoarder = 10; // This will be the distance between the icon and title, title and message, etc.
+    private int border = 15; // This is the colored edge arround the notification. It cuts into the margin.
+    private int margin = 20; // This is the distance from the notification contents to the edge and border.
+    private int edgeRoundedRadius = 30; // This controlls how much a corner is rounded.
+    private int iconSize = 32;
     // Filled Later
     private boolean hasSetRenderVars = false;
     private Rectangle titleRect = null;
@@ -59,14 +59,15 @@ public class Notification {
         if (iconName != null) {this.iconName = iconName;}
         framesToDisplayFor = EngineCalculator.secondsToFrames(secondsToDisplayFor);
     }
-
-    public void update() {
+    public void setCreationVars() {
         // This sets the variables for right after this Notification was created
         if (currentPosition == null) {
             currentPosition = targetedPositionList.get(0);
             targetedPositionList.remove(0);
             previousPosition = new Point(currentPosition);
         }
+    }
+    public void update() {
         // This skips moving to positions that the notification is already at
         while(targetPosition == null && targetedPositionList.size() > 0 && currentPosition.x == targetedPositionList.get(0).x && currentPosition.y == targetedPositionList.get(0).y) {
             targetedPositionList.remove(0);
@@ -95,7 +96,7 @@ public class Notification {
         // This updates displayFrame and checks if the notification should be deleted soon
         displayFrame++;
         if (displayFrame > framesToDisplayFor && targetedPositionList.size() == 0 && targetPosition == null) {
-            targetedPositionList.add(new Point(currentPosition.x + notificationRect.x, currentPosition.y));
+            targetedPositionList.add(new Point(currentPosition.x - notificationRect.x + distanceFromEdge, currentPosition.y));
             shouldDeleteSoon = true;
         }
     }
@@ -137,7 +138,7 @@ public class Notification {
 
     public void render(Graphics2D g) {
         if (hasSetRenderVars == false) {setRenderVars(g);}
-        Rectangle mainRect = new Rectangle(notificationRect.x + currentPosition.x, notificationRect.y + currentPosition.y, notificationRect.width, notificationRect.height);
+        Rectangle mainRect = new Rectangle(notificationRect.x + currentPosition.x - distanceFromEdge, notificationRect.y + currentPosition.y + distanceFromEdge, notificationRect.width, notificationRect.height);
         //     Rendering
         //   Background
         // Border
@@ -145,23 +146,32 @@ public class Notification {
         g.fillRoundRect(mainRect.x, mainRect.y, mainRect.width, mainRect.height, edgeRoundedRadius, edgeRoundedRadius);
         // Infill
         g.setColor(backgroundColor);
-        g.fillRoundRect(mainRect.x + border, mainRect.y + border, mainRect.width - border * 2, mainRect.y - border * 2, edgeRoundedRadius, edgeRoundedRadius);
+        g.fillRoundRect(mainRect.x + border, mainRect.y + border, mainRect.width - border * 2, mainRect.height - border * 2, edgeRoundedRadius, edgeRoundedRadius);
 
         //   Icon
         if (Game.images.contains(iconName)) {
-            g.drawImage(Game.images.get(iconName), mainRect.x + border + margin, mainRect.y + mainRect.height - border - margin - distanceFromEdge, iconSize, iconSize, null);
+            g.drawImage(
+                Game.images.get(iconName),
+                mainRect.x + border + margin,
+                mainRect.y + border + margin,
+                iconSize, iconSize, null);
         }
 
         //   Title
         g.setFont(titleFont);
         g.setColor(titleColor);
-        g.drawString(title, mainRect.x + border + margin + iconSize + internalBoarder, mainRect.y + mainRect.height - border - margin - distanceFromEdge - titleRect.height);
+        g.drawString(
+            title,
+            mainRect.x + border + margin + iconSize + internalBoarder,
+            mainRect.y + mainRect.height - border - margin - titleRect.height
+        );
 
         //   Message
         g.setFont(messageFont);
         g.setColor(messageColor);
-        g.drawString(message, mainRect.x + border + margin, mainRect.y + border + margin + messageRect.height);
+        g.drawString(message, mainRect.x + border + margin, mainRect.y + mainRect.height - border - margin);
         
-        System.out.println("mainRect: " + mainRect);
+
+        //+ titleRect.height / 2 + (iconSize / 2)
     }
 }

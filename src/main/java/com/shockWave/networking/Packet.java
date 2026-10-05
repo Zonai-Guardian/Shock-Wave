@@ -26,4 +26,14 @@ public class Packet {
         types.remove(index);
         return data;
     }
+
+    @Override 
+    public String toString() {
+        String string = "Packet{packetPurpose=" + packetPurpose + ", toFromID=" + toFromID + ", types=[";
+        for (PacketType type : types) {
+            string += "\nPacketType[" + type.toMinimalString() + "]";
+        }
+        string += "\n}";
+        return string;
+    }
 }
