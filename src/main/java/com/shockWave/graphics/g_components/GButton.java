@@ -62,6 +62,7 @@ public class GButton extends GComponent {
         g.fillRoundRect(rect.x + borderSize + offset.x, rect.y + borderSize + offset.y, rect.width - borderSize * 2, rect.height - borderSize * 2, roundedSize, roundedSize);
         // Text in Center
         g.setColor(text);
+        g.setFont(ConstantLibrary.GUI.GBUTTON_FONT);
         RenderEngine.drawTextInRect(new Rectangle(rect.x + offset.x, rect.y + offset.y, rect.width, rect.height), new Point(), displayText, displayTextDirection, false, g);
     }
     @Override
@@ -104,6 +105,7 @@ public class GButton extends GComponent {
         // Actually start rendering
         // Text in Center
         g.setColor(text);
+        g.setFont(ConstantLibrary.GUI.GBUTTON_FONT);
         RenderEngine.drawTextInRect(new Rectangle(rect.x + offset.x, rect.y + offset.y, rect.width, rect.height), new Point(), displayText, displayTextDirection, true, g);
     }
     

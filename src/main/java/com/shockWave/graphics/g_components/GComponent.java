@@ -35,27 +35,33 @@ public class GComponent implements Cloneable{
     public static enum GComponentSizes { // I need to add a size for every GComponent type
         SMALL(
             new Dimension(100, 60),
+            new Dimension(200, 60),
             new Dimension(200, 60)
         ),
         MEDIUM(
             new Dimension(150, 60),
-            new Dimension(400, 60)
+            new Dimension(400, 60),
+            new Dimension(500, 60)
         ),
         LARGE(
             new Dimension(200, 60),
+            new Dimension(800, 60),
             new Dimension(800, 60)
         ),
         X_LARGE(
             new Dimension(250, 60),
+            new Dimension(1000, 60),
             new Dimension(1000, 60)
         );
 
         public Dimension buttonSize;
         public Dimension textFieldSize;
+        public Dimension toggleSize;
 
-        private GComponentSizes(Dimension buttonSize, Dimension textFieldSize) {
+        private GComponentSizes(Dimension buttonSize, Dimension textFieldSize, Dimension toggleSize) {
             this.buttonSize = buttonSize;
             this.textFieldSize = textFieldSize;
+            this.toggleSize = toggleSize;
         }
     }
     public static enum ComponentStyle {SIMPLE, SETTINGS}
@@ -104,6 +110,8 @@ public class GComponent implements Cloneable{
             sizeDimension = size.buttonSize;
         } else if (this instanceof GTextField) {
             sizeDimension = size.textFieldSize;
+        } else if (this instanceof GToggle) {
+            sizeDimension = size.toggleSize;
         }
 
         rect = calculateRect(position, sizeDimension, positionDirection);

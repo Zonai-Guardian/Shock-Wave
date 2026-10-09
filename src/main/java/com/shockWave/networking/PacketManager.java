@@ -12,7 +12,6 @@ import com.shockWave.engine.EngineCalculator;
 public class PacketManager {
     // Each packet will have a packet type id.
     // The packet type id will indicate what information the packet should contain and how to handle it.
-    private static Packet splitPacket = null;
 
     public static enum PacketPurpose {
         // Reliable, Slower
@@ -24,7 +23,8 @@ public class PacketManager {
         REGISTER_PLAYER_TO_SERVER_S2, // Server -> Client  Short id, double colorFloat, Int posX, Int posY, LoopOfExistingPlayers{short id, String name, double colorFloat, int posX, int posY, byte Direction4} (loop end is id == -2)
 
         // This is for when a new client joins the server and the server tells the other clients about it
-        REGISTER_NEW_PLAYER_TO_CLIENT, // Short id, String name, double colorFloat, Int posX, Int posY, Byte Direction4
+        REGISTER_NEW_PLAYER_TO_CLIENT, // short id, String name, double colorFloat, Int posX, Int posY, Byte Direction4
+        DELETE_PLAYER_IN_CLIENT,       // short id
 
         // Fast, Not as reliable
         //   FAST_IMMEDIATE_PING,
@@ -47,10 +47,10 @@ public class PacketManager {
         PACKET_END // Nothing gets sent after this. It just signals that the packet is done being sent
     }
 
-    public static void writePacketsToOutputStream(DataOutputStream outputStream, ArrayList<Packet> packets) {
+    public static boolean writePacketsToOutputStream(DataOutputStream outputStream, ArrayList<Packet> packets) {
         if (packets == null) {
             System.out.println("packets is null in PacketManager.writePacketsToOutputStream()! Ignoring and continuing...");
-            return;
+            return false;
         }
         for (Packet packet : packets) {
             System.out.println("Writting packet data to a DataOutputStream!...");
@@ -84,19 +84,21 @@ public class PacketManager {
                 outputStream.writeByte(EngineCalculator.enumToInteger(PacketDataType.class, PacketDataType.PACKET_END));
                 outputStream.flush();
             } catch (IOException e) {
-                System.out.println("Failed to write data to outputStream in PacketManager.writePacketsToOutputStream()!");
-                EngineCalculator.printExceptionInfo(e);
+                //System.out.println("Failed to write data to outputStream in PacketManager.writePacketsToOutputStream()!");
+                //EngineCalculator.printExceptionInfo(e);
+                return true;
             }
         }
+        return false;
     }
-    public static ArrayList<Packet> readPacketsFromInputStream(DataInputStream inputStream, int senderID) { // senderID should be -1 if the server sent it to the client
+    public static ArrayList<Packet> readPacketsFromInputStream(DataInputStream inputStream, int senderID, PacketWrapper splitPacketWrapper) { // senderID should be -1 if the server sent it to the client
 
         ArrayList<Packet> packetsReceived = new ArrayList<>();
         boolean gotDataFromStream = false;
 
         try {
-            Packet packet = splitPacket;
-            splitPacket = null;
+            Packet packet = splitPacketWrapper.packet;
+            splitPacketWrapper.packet = null;
             while (inputStream.available() > 0) {
                 gotDataFromStream = true;
                 byte dataTypeIndex = inputStream.readByte();
@@ -127,7 +129,7 @@ public class PacketManager {
                 }
             }
             if (packet != null) {
-                splitPacket = packet;
+                splitPacketWrapper.packet = packet;
             }
         } catch (IOException e) {
             System.out.println("Failed to receive packets with inputStream in PacketManager.writePacketsToOutputStream()!");

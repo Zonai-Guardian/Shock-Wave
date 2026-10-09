@@ -79,8 +79,8 @@ public class Mouse {
         if (Game.controllType != ControlType.KEYBOARD_AND_MOUSE) {return;} // Do not move cursor with mouse if controllType is not correct
 
         cursorCoordinates = new Point(
-            (int)(x / Game.displayScale.x - Game.displayOffset.x),
-            (int)(y / Game.displayScale.y - Game.displayOffset.y)
+            (int)((x - Game.displayOffset.x - (Game.isFullScreen ? 0 : Game.getFrameInsets().left)) / Game.displayScale.x),
+            (int)((y - Game.displayOffset.y - (Game.isFullScreen ? 0 : Game.getFrameInsets().top)) / Game.displayScale.y)
         );
     }
     

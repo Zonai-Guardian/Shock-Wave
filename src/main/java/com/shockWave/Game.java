@@ -1,6 +1,7 @@
 package com.shockWave;
 
 import com.shockWave.client.Client;
+import com.shockWave.client.Client.ClientState;
 import com.shockWave.engine.EngineCalculator;
 import com.shockWave.graphics.GraphicsCalculator;
 import com.shockWave.graphics.Menu;
@@ -11,20 +12,24 @@ import com.shockWave.graphics.g_components.GButton;
 import com.shockWave.graphics.g_components.GButtonTemplate;
 import com.shockWave.graphics.g_components.GComponent;
 import com.shockWave.graphics.g_components.GTextField;
+import com.shockWave.graphics.g_components.GToggle;
 import com.shockWave.graphics.g_components.GComponent.ActivationType;
+import com.shockWave.graphics.g_components.GComponent.ComponentStyle;
 import com.shockWave.graphics.g_components.GComponent.GComponentSizes;
 import com.shockWave.input.ConsoleController;
 import com.shockWave.input.InputPlaceHolder;
 import com.shockWave.input.Keyboard;
 import com.shockWave.input.Mouse;
+import com.shockWave.libraries.ConstantLibrary;
 import com.shockWave.libraries.ImageLibrary;
+import com.shockWave.networking.ServerSocketHandler;
 import com.shockWave.notification.Notification;
 import com.shockWave.notification.NotificationManager;
 import com.shockWave.savers.KeyBindings;
 import com.shockWave.savers.Settings;
 import com.shockWave.savers.Settings.DebugEnum;
 import com.shockWave.server.Server;
-
+import com.shockWave.server.Server.ServerState;
 //Maven imports
 import com.studiohartman.jamepad.ControllerButton;
 
@@ -42,6 +47,7 @@ import java.awt.Graphics2D;
 import java.awt.GraphicsDevice;
 import java.awt.GraphicsEnvironment;
 import java.awt.Image;
+import java.awt.Insets;
 import java.awt.Point;
 import java.awt.Toolkit;
 import java.awt.event.ComponentAdapter;
@@ -64,11 +70,26 @@ Programmer Codes:
 
 // Bible Link: https://www.biblegateway.com/passage/?search=Genesis%201&version=NIV
 
+
+/*
+  Things to work on:
+   Done:
+    Server thread management
+    mouse position problem
+    icons not showing
+    fullscreen toggling
+    settings rendering
+    client shut down
+    public ip address retrieval
+   Not Done:
+    sherver shut down
+    chat
+*/
 public class Game implements Runnable {
     //this class will handle all of the ui and game status/state and all variables that should not be deleted when the player exits a world
     
-    private JFrame frame;
-    private GamePanel panel;
+    private static JFrame frame;
+    private static GamePanel panel;
     // Get the default screen device and set full-screen
     private GraphicsDevice graphicsDevice = GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice();
     //resolution scaling
@@ -78,7 +99,7 @@ public class Game implements Runnable {
     public static Point displayOffset = new Point(0, 0);
     //windowed or full-screen
     public static Dimension windowedSize = new Dimension(gameResolution.width / 2, gameResolution.height / 2);
-    public static boolean fullScreen = false;
+    public static boolean isFullScreen = true;
 
     //game loop vars
     private int fps = 0;
@@ -138,7 +159,7 @@ public class Game implements Runnable {
         }, //all background image names [!!MUST BE ACTUAL LOADED IMAGES!!]
         EngineCalculator.secondsToFrames(4.0), //display time in seconds
         EngineCalculator.secondsToFrames(0.5), //fade time in seconds
-        FitTypes.FIT
+        FitTypes.STRETCH // bookmark  This should probably be changed when I have better backgrounds for the game!
     );
     public static Settings settings;
     public static MenuManager menuManager = new MenuManager();
@@ -171,19 +192,22 @@ public class Game implements Runnable {
         shutDownServer();
         System.exit(0);
     }
+    public static Insets getFrameInsets() {
+        return frame.getInsets();
+    }
     public void toggleFullScreen() {
-        fullScreen = !fullScreen;
+        isFullScreen = !isFullScreen;
         updateFullScreen();
     }
     private void updateFullScreen() {
-        if (fullScreen) {
+        if (isFullScreen) {
             setFullScreen();
         } else {
             setWindowed();
         }
     }
     public void setFullScreen() {
-        fullScreen = true;
+        isFullScreen = true;
         frame.dispose();
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setUndecorated(true);
@@ -198,14 +222,16 @@ public class Game implements Runnable {
         }
     }
     public void setWindowed() {
-        fullScreen = false;
+        isFullScreen = false;
         frame.dispose();
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.addComponentListener(new ComponentAdapter() {
-            @Override
-            public void componentResized(ComponentEvent e) {
-                windowedSize = new Dimension(panel.getWidth(), panel.getHeight());
-            }
+            // This is disabled because it gets the window stuck at max size even in windowed mode when toggling fullscreen
+
+            //@Override
+            //public void componentResized(ComponentEvent e) {
+            //    windowedSize = new Dimension(panel.getWidth(), panel.getHeight());
+            //}
         });
         frame.setUndecorated(false);
         frame.setResizable(true);
@@ -219,7 +245,7 @@ public class Game implements Runnable {
         frame.pack();
         frame.setLocationRelativeTo(null);
         frame.setVisible(true);
-        
+        panel.requestFocusInWindow();
     }
 
     @Override
@@ -267,8 +293,8 @@ public class Game implements Runnable {
     public void startServer(int port) {
         Game.server = new Server(port);
         if (client != null) {gameState = GameState.PLAY;}
-        String message = "Connect locally with \"" + server.socketManager.getLocalAddress() + "\" or globaly with \"" + server.socketManager.getGlobalAddress() + "\"";
-        notificationManager.addNotification(new Notification("Successfully Started Server", message, "success", 30.0));
+        String message = "Connect locally with \"" + server.socketManager.getLocalAddress() + "\" or publicly with \"" + server.socketManager.getPublicAddress() + "\"";
+        notificationManager.addNotification(new Notification("Successfully Started Server", message, "serverIcon", 30.0));
     }
     public static void shutDownServer() {
         if (server != null) {server.shutDown();}
@@ -284,12 +310,22 @@ public class Game implements Runnable {
         client = new Client(displayName, serverAddress, serverPort);
         if (client.socketManager.isConnected) {
             gameState = GameState.PLAY;
-            notificationManager.addNotification(new Notification("Successfully Connected To Server", "Server accepted connection", "success", 5.0));
+            notificationManager.addNotification(new Notification("Successfully Connected To Server", "Server accepted connection", "successIcon", 5.0));
         } else {
-            notificationManager.addNotification(new Notification("Failed To Connect To Server", "Connecting to the server was rejected by the server", "error", 5.0));
+            notificationManager.addNotification(new Notification("Failed To Connect To Server", "Connecting to the server was rejected by the server", "errorIcon", 5.0));
             client = null;
         }
         
+    }
+    public static void shutDownClientGently() {
+        client.shutDownClientGently();
+        gameState = GameState.MENUS;
+        menuManager.setPath("start", Direction5.RIGHT);
+    }
+    public static void shutDownClient() {
+        client = null;
+        gameState = GameState.MENUS;
+        menuManager.setPath("start", Direction5.RIGHT);
     }
 
     // Loaders
@@ -324,24 +360,20 @@ public class Game implements Runnable {
         //Fill menuMap with propper Menus that are filled with propper GComponents
         //This is the main place to load/Create GComponents and Menus
         //use geGComponentID for GComponent IDs!
-        
-        // Vars:
-        Point menuCorner = new Point(300, Game.gameResolution.height / 3);
-        Point componentOffset = new Point(0, 60);
 
         MenuManager.assembleMenuOfButtons(
             "start",
             new GButtonTemplate[]{
                 new GButtonTemplate("Host Server", "Host a Shock Wave server for others to join", ActivationType.GO_TO_MENU, "host"),
                 new GButtonTemplate("Join Server", "Join a Shock Wave server that someone else is hosting", ActivationType.GO_TO_MENU, "join"),
-                new GButtonTemplate("Settings", "Change or view all of the changable settings", ActivationType.GO_TO_MENU, "settings"),
+                new GButtonTemplate("Settings", "Change or view all of the changable settings", ActivationType.GO_TO_MENU, "s_general"),
                 new GButtonTemplate("Key Bindings", "Change or view all of the key bindings", ActivationType.NONE),
                 new GButtonTemplate("Extras", "Extra things like links, credits, etc.", ActivationType.GO_TO_MENU, "extras"),
                 new GButtonTemplate("Quit", "Close this program and exit to desktop", ActivationType.EXIT)
             },
-            menuCorner,
+            ConstantLibrary.GUI.MENU_CORNER,
             Direction8.LEFT_CENTER,
-            componentOffset,
+            new Point(0, ConstantLibrary.GUI.MENU_COMPONENT_OFFSET.y),
             GComponentSizes.LARGE,
             Direction8.LEFT_CENTER,
             Direction5.LEFT
@@ -353,12 +385,12 @@ public class Game implements Runnable {
                 new GButtonTemplate("Wiki", "Visit the official Shock Wave Wiki", ActivationType.NONE),
                 new GButtonTemplate("Discord", "Visit the official Shock Wave Discord Server", ActivationType.NONE),
                 new GButtonTemplate("Tutorials", "Find tutorials for Shock Wave", ActivationType.OPEN_LINK, "https://m.youtube.com/results?sp=mAEA&search_query=Spirit+Of+Eldervine+Tutorials"),
-                new GButtonTemplate("Holy Bible", "Read the Bible to read between the hidden, in-game verses", ActivationType.OPEN_LINK, "https://www.biblegateway.com/passage/?search=Genesis%201&version=NIV"),
+                new GButtonTemplate("Bible", "Read the Bible to read between the hidden, in-game verses", ActivationType.OPEN_LINK, "https://www.biblegateway.com/passage/?search=Genesis%201&version=NIV"),
                 new GButtonTemplate("Back", "Go back to the previous menu", ActivationType.BACK)
             },
-            menuCorner,
+            ConstantLibrary.GUI.MENU_CORNER,
             Direction8.LEFT_CENTER,
-            componentOffset,
+            new Point(0, ConstantLibrary.GUI.MENU_COMPONENT_OFFSET.y),
             GComponentSizes.LARGE,
             Direction8.LEFT_CENTER,
             Direction5.LEFT
@@ -437,7 +469,7 @@ public class Game implements Runnable {
                         System.out.println("Starting Client from GButton! Address: " + address + ", Port: " + port);
                         startClient(nameText, address, port);
                     } else {
-                        notificationManager.addNotification(new Notification("Failed To Join Server", "Failed to join server with address and port " + address + ":" + port, "error", 3.0));
+                        notificationManager.addNotification(new Notification("Failed To Join Server", "Failed to join server with address and port " + address + ":" + port, "errorIcon", 3.0));
                     }
                 }
             };
@@ -506,6 +538,31 @@ public class Game implements Runnable {
             hostMenu.addGComponent(button);
 
             menuManager.addMenu(hostMenu);
+        }
+        if (true) { // General Settings Menu
+            Menu menu = new Menu("s_general");
+            GToggle toggle = new GToggle(){
+                @Override 
+                public void toggleComponent(boolean isNowEnabled) {
+                    if (isNowEnabled == Game.isFullScreen) {return;} else {Main.game.toggleFullScreen();}
+                }
+            };
+            toggle.setCommons("Fullscreen", "Toggle whether or not the game fills the entire screen");
+            toggle.setDisplayRect(new Point(gameResolution.width / 2, 300), GComponentSizes.LARGE, Direction8.CENTER_TOP);
+            toggle.componentStyle = ComponentStyle.SETTINGS;
+            toggle.isEnabled = isFullScreen;
+            menu.addGComponent(toggle);
+            
+            toggle = new GToggle();
+            toggle.setCommons("Extra-Random-Useless Toggle", "Doesn't the toggle animation look sooooo smooooth?");
+            toggle.setDisplayRect(new Point(gameResolution.width / 2, 400), GComponentSizes.LARGE, Direction8.CENTER_TOP);
+            toggle.componentStyle = ComponentStyle.SETTINGS;
+            toggle.isEnabled = true;
+            menu.addGComponent(toggle);
+
+            menu.addGComponent(MenuManager.getBackButton(ComponentStyle.SETTINGS));
+
+            menuManager.addMenu(menu);
         }
     }
     private void loadImages() {
@@ -576,6 +633,9 @@ public class Game implements Runnable {
         for (InputPlaceHolder input : inputs) {
             activateAction(input.action, input.wasPressed);
         }
+        for (InputPlaceHolder input : inputs) {
+            if (client != null) {client.handleInput(input.action, input.wasPressed);}
+        }
     }
     public void activateAction(String action, boolean wasPressed) {
 
@@ -618,7 +678,7 @@ public class Game implements Runnable {
                     isGameFrozen = !isGameFrozen;
                     break;
                 case "notification":
-                    notificationManager.addNotification(new Notification("Test Notification " + EngineCalculator.randomRange(0, 10), "Randomly generated numbers: " + EngineCalculator.randomRange(0, 50), "successIcon", 5.0));
+                    notificationManager.addNotification(new Notification("Test Notification " + EngineCalculator.randomRange(0, 10), "Randomly generated numbers: " + EngineCalculator.randomRange(0, 50), "serverIcon", 5.0));
                     break;
                 case "copy":
                     if (Game.keyboard.heldKeys.contains("ctrl")) {Game.menuManager.textManager.handleKey("copy");}
@@ -627,9 +687,6 @@ public class Game implements Runnable {
                     if (Game.keyboard.heldKeys.contains("ctrl")) {Game.menuManager.textManager.handleKey("paste");}
                     break;
                 default:
-                    if (client != null) {
-                        client.handleInput(action, wasPressed);
-                    }
                     //System.out.println("Un-handled action \"" + action + "\" in Game.activateAction()");
                     break;
             }
@@ -645,11 +702,18 @@ public class Game implements Runnable {
     public void updateInputs(double delta) {
         ArrayList<String> actionsHeld = new ArrayList<>(keyBindings.actionsHeld); // Prevents the game throwing a ConcurrentModificationException
         for (String action : actionsHeld) {
+            if (action == null) {continue;}
             switch (action) {
+                case "input":
+                    // Run code for the specific input
+                    break;
                 default:
-                    if (client != null) {client.updateInput(action, delta);}
                     break;
             }
+        }
+        for (String action : actionsHeld) {
+            if (action == null) {continue;}
+            if (client != null) {client.updateInput(action, delta);}
         }
     }
     
@@ -692,6 +756,16 @@ public class Game implements Runnable {
                 }
                 break;
         }
+        
+        // Finish shutting client down gently
+        if (client != null && client.clientState == ClientState.SHUTTING_DOWN && client.socketManager.isReadyToShutDown()) {
+            client = null;
+        }
+        if (server != null && server.serverState == ServerState.STOPPING && server.isReadyToShutDown()) {
+            server.finishShutDown();
+            server = null;
+        }
+        
         if (updateMenus) {menuManager.update();}
         notificationManager.update();
         panel.repaint();
@@ -864,6 +938,31 @@ public class Game implements Runnable {
                         debugStrings.add("Before: " + Game.menuManager.textManager.getTextBeforeSelection());
                         debugStrings.add("In: " + Game.menuManager.textManager.getTextInSelection());
                         debugStrings.add("After: " + Game.menuManager.textManager.getTextAfterSelection());
+                        break;
+                    case SERVER_INFO:
+                        debugStrings.add(header + "Server Info");
+                        debugStrings.add("Server: " + server);
+                        if (server != null && server.socketManager != null) {
+                            debugStrings.add("Server State: " + server.serverState);
+                            debugStrings.add("  Connected Handlers:");
+                            for (ServerSocketHandler handler : server.socketManager.sockets) {
+                                debugStrings.add("Handler{ID=" + handler.clientID + ", isReceivingThreadRunning=" + handler.isReceivingThreadRunning + ", lastPacketReceiveTime=" + handler.lastPacketReceiveTime + "}");
+                            }
+                            debugStrings.add("  Disconnected Handlers:");
+                            for (ServerSocketHandler handler : server.socketManager.disconnectedSockets) {
+                                debugStrings.add("Handler{ID=" + handler.clientID + ", isReceivingThreadRunning=" + handler.isReceivingThreadRunning + ", lastPacketReceiveTime=" + handler.lastPacketReceiveTime + "}");
+                            }
+                        }
+                        break;
+                    case CLINET_INFO:
+                        debugStrings.add(header + "Client Info");
+                        debugStrings.add("Client: " + client);
+                        if (client != null && client.socketManager != null) {
+                            debugStrings.add("ID=" + client.player.id);
+                            debugStrings.add("isConnected=" + client.socketManager.isConnected);
+                            debugStrings.add("isHost=" + client.socketManager.isHost);
+                            debugStrings.add("isPacketReceivingThreadRunning=" + client.socketManager.isPacketReceivingThreadRunning);
+                        }
                         break;
                 }
             }

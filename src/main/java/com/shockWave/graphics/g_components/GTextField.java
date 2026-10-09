@@ -72,7 +72,7 @@ public class GTextField extends GComponent {
 
     private void render(Point offset, boolean shouldRenderDebug, Graphics2D g) {
         boolean isTargeted = isTargeted();
-        g.setFont(ConstantLibrary.GUI.FONT);
+        g.setFont(ConstantLibrary.GUI.GTEXTFIELD_FONT);
 
         // Assign Colors
         Color centerColor = null;

@@ -1,17 +1,12 @@
 package com.shockWave.server;
 
-import java.awt.geom.Point2D;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
-import com.shockWave.Game;
 import com.shockWave.Game.Direction4;
 import com.shockWave.engine.EngineCalculator;
 import com.shockWave.networking.Packet;
 import com.shockWave.networking.ServerSocketHandler;
 import com.shockWave.networking.ServerSocketManager;
-import com.shockWave.networking.PacketManager.PacketDataType;
 import com.shockWave.networking.PacketManager.PacketPurpose;
 import com.shockWave.server.player.SPlayerManager;
 import com.shockWave.server.player.SPlayer;
@@ -31,7 +26,7 @@ public class Server implements Runnable {
     // For Inner Workings Of Server
     public enum ServerState{STARTUP, LOADING, RUNNING, STOPPING}
     public enum GameMode{STORY_MODE, BATTLE_MODE}
-    public static ServerState serverState = ServerState.STARTUP;
+    public ServerState serverState = ServerState.STARTUP;
 
     //Other variables for the server to run:
     private static int nextPlayerID = 0;
@@ -49,7 +44,18 @@ public class Server implements Runnable {
     }
     public void shutDown() {
         shouldStopServer = true;
-        socketManager.stop();
+        socketManager.shutDown();
+    }
+    public void shutDownGently() {
+        serverState = ServerState.STOPPING;
+        shouldStopServer = true;
+        socketManager.startShutDown();
+    }
+    public boolean isReadyToShutDown() {
+        return socketManager.isReadyToShutDown();
+    }
+    public void finishShutDown() {
+        socketManager.finishShutDown();
     }
     public static int getNewPlayerID() {
         int id = nextPlayerID;
@@ -99,6 +105,7 @@ public class Server implements Runnable {
             case RUNNING:
                 socketManager.receiveDevicePackets();
                 handleReceivedPackets();
+                socketManager.update();
                 // update game physics, logic, etc. (Make sure to use delta!!!!)
                 generatePackets();
                 socketManager.handleSendingPackets();
@@ -118,7 +125,7 @@ public class Server implements Runnable {
     // Packet Management
     private void handleReceivedPackets() {
         for (Packet packet : socketManager.getReceivedPackets()) {
-            System.out.println("    Receiving packet in Server with purpose: " + EngineCalculator.shortToPacketPurpose(packet.packetPurpose));
+            //System.out.println("    Receiving packet in Server with purpose: " + EngineCalculator.shortToPacketPurpose(packet.packetPurpose));
 
             switch (EngineCalculator.shortToPacketPurpose(packet.packetPurpose)) {
                 case DISCONNECT:
@@ -159,7 +166,7 @@ public class Server implements Runnable {
 
         // Iterate through packet purposes (packet creation requests with extra data)
         for (ServerPacketPurpose purpose : packetPurposes) {
-            System.out.println("    Generating packet in Server with purpose: " + purpose.packetPurpose);
+            //System.out.println("    Generating packet in Server with purpose: " + purpose.packetPurpose);
 
             // Checks if the packet should just be sent to everyone
             //boolean sendPacketToEveryone = false;
@@ -176,7 +183,7 @@ public class Server implements Runnable {
                 int targetedClientID = i;
 
                 int extraInt1 = 0;
-                if (purpose.packetPurpose == PacketPurpose.REGISTER_NEW_PLAYER_TO_CLIENT) {
+                if (purpose.packetPurpose == PacketPurpose.REGISTER_NEW_PLAYER_TO_CLIENT || purpose.packetPurpose == PacketPurpose.DELETE_PLAYER_IN_CLIENT) {
                     extraInt1 = targetedClientID;
                     targetedClientID = -1;
                 }
@@ -216,6 +223,9 @@ public class Server implements Runnable {
                         packet.writeData(player.posX);
                         packet.writeData(player.posY);
                         packet.writeData(EngineCalculator.enumToByte(Direction4.class, player.direction));
+                        break;
+                    case DELETE_PLAYER_IN_CLIENT:
+                        packet.writeData((short)extraInt1);
                         break;
                     case UPDATE_PLAYERS_TRANSFORM:
                         for (SPlayer sPlayer : playerManager.getPlayerMap().values()) {

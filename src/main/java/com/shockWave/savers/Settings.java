@@ -14,23 +14,27 @@ public class Settings {
         CURSOR_INFO,
         // Then the text debug info should be rendered (will actually be rendered last)
         FPS,
+        SERVER_INFO,
+        CLINET_INFO,
         MENU_INFO,
         TYPING,
         TYPING_TEST,
         MENU_ANIMATION_INFO
     }
     private ArrayList<DebugEnum> debugList = new ArrayList<>();
-    public boolean isDebugEnabled = false;
+    public boolean isDebugEnabled = true;
 
     public double textSizeMultiplier = 1.0; // This should be multiplied by the text whenever it is drawn in the GUI
 
     public Settings() {}
     public void init() {
-        //debugList.add(DebugEnum.CURSOR_INFO);
-        debugList.add(DebugEnum.MENU_INFO);
-        debugList.add(DebugEnum.TYPING);
+        debugList.add(DebugEnum.CURSOR_INFO);
+        //debugList.add(DebugEnum.MENU_INFO);
+        //debugList.add(DebugEnum.TYPING);
         //debugList.add(DebugEnum.TYPING_TEST);
         //debugList.add(DebugEnum.FPS);
+        debugList.add(DebugEnum.SERVER_INFO);
+        debugList.add(DebugEnum.CLINET_INFO);
         //debugList.add(DebugEnum.KEYBOARD_INFO);
         //debugList.add(DebugEnum.MENU_ANIMATION_INFO);
     }

@@ -18,6 +18,7 @@ import com.shockWave.Game;
 import com.shockWave.engine.EngineCalculator;
 import com.shockWave.networking.Packet;
 import com.shockWave.networking.PacketManager;
+import com.shockWave.networking.PacketWrapper;
 import com.shockWave.networking.PacketManager.PacketPurpose;
 
 public class ClientSocketManager {
@@ -43,6 +44,7 @@ public class ClientSocketManager {
     private DataOutputStream datagramOutputStream = null;
 
     // Packet List Stuff
+    private PacketWrapper splitPacketWrapper = new PacketWrapper(null);
     public LinkedBlockingQueue<PacketPurpose> packetsToGenerate = new LinkedBlockingQueue<>();
     public LinkedBlockingQueue<Packet> packetsToSend = new LinkedBlockingQueue<>();
     public LinkedBlockingQueue<Packet> packetsReceived = new LinkedBlockingQueue<>();
@@ -85,9 +87,12 @@ public class ClientSocketManager {
         }
     }
 
-    public void shutDownClient() {
+    public void shutDown() {
         shouldShutDown = true;
         // idk what else to do at the moment
+    }
+    public boolean isReadyToShutDown() {
+        return isPacketReceivingThreadRunning && isDatagramPacketReceivingThreadRunning;
     }
 
 
@@ -155,7 +160,7 @@ public class ClientSocketManager {
 
         while (shouldShutDown == false) {
             if (socket.isConnected()) {
-                ArrayList<Packet> packets = PacketManager.readPacketsFromInputStream(socketInputStream, -1);
+                ArrayList<Packet> packets = PacketManager.readPacketsFromInputStream(socketInputStream, -1, splitPacketWrapper);
                 for (Packet packet : packets) {
                     packetsReceived.add(packet);
                 }
@@ -186,7 +191,7 @@ public class ClientSocketManager {
                 DataInputStream inputStream = new DataInputStream(byteStream);
 
                 // Package the data into custom packets for later handling
-                ArrayList<Packet> packets = PacketManager.readPacketsFromInputStream(inputStream, -1); // From server so senderID is -1
+                ArrayList<Packet> packets = PacketManager.readPacketsFromInputStream(inputStream, -1, new PacketWrapper(null)); // From server so senderID is -1
                 
                 for (Packet packet : packets) {
                     packetsReceived.add(packet);
@@ -199,9 +204,6 @@ public class ClientSocketManager {
         }
 
         isDatagramPacketReceivingThreadRunning = false;
-    }
-    public boolean isReadyToShutDown() {
-        return isPacketReceivingThreadRunning && isDatagramPacketReceivingThreadRunning;
     }
     public void addPurposeToGenerate(PacketPurpose purpose) {
         if (packetsToGenerate.contains(purpose) == false) {

@@ -14,6 +14,7 @@ import com.shockWave.Game;
 import com.shockWave.Game.Direction5;
 import com.shockWave.engine.EngineCalculator;
 import com.shockWave.graphics.g_components.GComponent;
+import com.shockWave.libraries.ConstantLibrary;
 
 public class Menu {
     // Name of menu used for all referencing. Must be the same as in menuMap in MenuManager.java!!!!
@@ -147,20 +148,50 @@ public class Menu {
         }
         return false;
     }
-    public String getPreferedPreviousMenu() { // Primarily For Overriding
-        // This method is for if a specific menu needs to go to a special menu instead of going back in the menu path.
-        return null;
+    public boolean handleGoingBackPack() { // Primarily For Overriding
+        // This method is for if a specific menu needs custom fuctionality when it would usually go back in the menu path
+        boolean didOverrideDefault = false;
+
+        return didOverrideDefault;
+    }
+
+    // Updaters
+    public void updateMenuComponents() {
+        for (GComponent component : components.values()) {
+            component.updateComponent();
+        }
     }
 
     // Rendering
     public void render(Point offset, Graphics2D g) {
+        if (name.startsWith("s_")) {
+            renderSettingsBackground(g);
+        }
         for (GComponent gc : components.values()) {
             gc.render(offset, g);
         }
     }
     public void renderDebug(Point offset, Graphics2D g) {
+        if (name.startsWith("s_")) {
+            renderSettingsBackground(g);
+        }
         for (GComponent gc : components.values()) {
             gc.renderDebug(offset, g);
         }
+    }
+    private void renderSettingsBackground(Graphics2D g) {
+        Rectangle rect = new Rectangle(0, 0, (int)(Game.gameResolution.width * 0.75), (int)(Game.gameResolution.height * 0.75));
+        rect.x = (Game.gameResolution.width - rect.width) / 2;
+        rect.y = (Game.gameResolution.height - rect.height) / 2;
+
+        int borderSize = 20;
+        int cornerRoundness = 200;
+
+        g.setColor(ConstantLibrary.GUI.SETTINGS_BACKGROUND);
+        g.fillRoundRect(rect.x, rect.y, rect.width, rect.height, cornerRoundness, cornerRoundness);
+        g.setColor(ConstantLibrary.GUI.SETTINGS_BORDER);
+        RenderEngine.setGraphicsStrokeWidth(borderSize, g);
+        g.drawRoundRect(rect.x, rect.y, rect.width, rect.height, cornerRoundness, cornerRoundness);
+        RenderEngine.setGraphicsStrokeWidth(1, g);
     }
 }

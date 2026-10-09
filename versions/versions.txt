@@ -12,6 +12,14 @@ Version numbers and what they added or changed:
 			fixed client rendering,
 			fixed networking errors,
 			added some menus,
+0.2.1 - Fixed bugs, improved networking, added toggles,
+			improved server thread management,
+			added toggle,
+			added fullscreen toggling,
+			added client shut down,
+			fixed mouse position bug,
+			fixed icons not showing bug,
+			fixed public ip address retrieval
 
 
 

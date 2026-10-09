@@ -3,7 +3,10 @@ package com.shockWave.server.player;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import com.shockWave.Game;
 import com.shockWave.engine.EngineCalculator;
+import com.shockWave.networking.PacketManager.PacketPurpose;
+import com.shockWave.server.ServerPacketPurpose;
 
 public class SPlayerManager {
     private Map<Short, SPlayer> players = new LinkedHashMap<>();
@@ -25,6 +28,12 @@ public class SPlayerManager {
     }
     public void setPlayerName(short id, String displayName) {
         getPlayer(id).displayName = displayName;
+    }
+    public void removePlayer(short id) {
+        if (players.containsKey(id)) {
+            players.remove(id);
+            Game.server.socketManager.addPacketToGenerate(new ServerPacketPurpose(PacketPurpose.DELETE_PLAYER_IN_CLIENT, id));
+        }
     }
     public Map<Short, SPlayer> getPlayerMap() {
         return players;

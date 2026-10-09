@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -37,6 +38,7 @@ public class ServerSocketManager {
     public LinkedBlockingQueue<Packet> packetsForDevice = new LinkedBlockingQueue<>(); // This will hold packets for the client that is on this device
 
     public ArrayList<ServerSocketHandler> sockets = new ArrayList<>();
+    public ArrayList<ServerSocketHandler> disconnectedSockets = new ArrayList<>();
     
     public DatagramSocket datagramSocket = null;
     public DataInputStream datagramStreamIn = null;
@@ -49,17 +51,38 @@ public class ServerSocketManager {
     public ServerSocketManager(int port) {
         this.port = port;
     }
-    public void stop() {
+    public void shutDown() {
         if (datagramSocket != null) {datagramSocket.close();}
         for (ServerSocketHandler socket : sockets) {
-            socket.close();
+            socket.closeStreams();
+        }
+    }
+    public void startShutDown() {
+        for (int i = sockets.size() - 1; i >= 0; i--) {
+            Game.server.playerManager.removePlayer((short)sockets.get(i).clientID);
+            sockets.get(i).startShutDown();
+            disconnectedSockets.add(sockets.get(i));
+            sockets.remove(i);
+        }
+    }
+    public boolean isReadyToShutDown() {
+        for (ServerSocketHandler handler : disconnectedSockets) {
+            if (handler.isReadyToShutDown() == false) {
+                return false;
+            }
+        }
+        return true;
+    }
+    public void finishShutDown() {
+        for (ServerSocketHandler handler : disconnectedSockets) {
+            handler.finishShutDown();
         }
     }
     public void disconnectSocket(int clientID) {
         for (int i = sockets.size() - 1; i >= 0; i--) {
             ServerSocketHandler handler = sockets.get(i);
             if (handler.isLinkedToClientOnDevice == false && handler.clientID == clientID) {
-                handler.close();
+                handler.closeStreams();
                 sockets.remove(i);
             }
         }
@@ -91,6 +114,26 @@ public class ServerSocketManager {
             }
         }
     }
+
+
+    public void update() {
+        for (int i = sockets.size() - 1; i >= 0; i--) {
+            ServerSocketHandler handler = sockets.get(i);
+            if (handler.lastPacketReceiveTime != 0 && (System.currentTimeMillis() - handler.lastPacketReceiveTime) / 1000 > 10) {
+                Game.server.playerManager.removePlayer((short)handler.clientID);
+                disconnectedSockets.add(handler);
+                sockets.remove(i);
+                handler.startShutDown();
+            }
+        }
+        for (int i = disconnectedSockets.size() - 1; i >= 0; i--) {
+            if (disconnectedSockets.get(i).isReadyToShutDown()) {
+                disconnectedSockets.get(i).finishShutDown();
+                disconnectedSockets.remove(i);
+            }
+        }
+    }
+
     
     public void receiveDevicePackets() {
         for (ServerSocketHandler handler : sockets) {
@@ -117,7 +160,7 @@ public class ServerSocketManager {
                 DataInputStream inputStream = new DataInputStream(byteStream);
 
                 // Package the data into custom packets for later handling
-                for (Packet packet : PacketManager.readPacketsFromInputStream(inputStream, getClientID(clientAddress, clientPort))) {
+                for (Packet packet : PacketManager.readPacketsFromInputStream(inputStream, getClientID(clientAddress, clientPort), new PacketWrapper(null))) {
                     packetsReceived.add(packet);
                 }
             } catch (IOException e) {
@@ -207,12 +250,17 @@ public class ServerSocketManager {
         // }
 
         // Sends each set of packets to the right client using Sockets
-        for (ServerSocketHandler handler : sockets) {
+        ArrayList<ServerSocketHandler> newSocketList = new ArrayList<>(sockets);
+        for (ServerSocketHandler handler : newSocketList) {
             if (socketPackets.containsKey(handler.clientID)) {
                 if (handler.isLinkedToClientOnDevice) {
                     packetsForDevice.addAll(socketPackets.get(handler.clientID));
                 } else {
-                    if (socketPackets.get(handler.clientID).size() > 0) {PacketManager.writePacketsToOutputStream(sockets.get(handler.clientID).outputStream, socketPackets.get(handler.clientID));}
+                    if (socketPackets.get(handler.clientID).size() > 0) {
+                        PacketManager.writePacketsToOutputStream(
+                            handler.outputStream,
+                            socketPackets.get(handler.clientID)
+                        );}
                 }
             }
         }
@@ -266,13 +314,53 @@ public class ServerSocketManager {
 
     public String getLocalAddress() {
         try {
-            return InetAddress.getByName("localhost").toString();
+            String address = InetAddress.getByName("localhost").toString();
+            return (address.startsWith("localhost/") ? address.split("localhost/")[1] : address) + ":" + port;
         } catch(UnknownHostException e) {
             return "ERROR";
         }
     }
-    public String getGlobalAddress() {
+
+    public String getPublicAddress() {
+        // A list of reliable APIs that return *only* the plain-text IP address
+        String[] IP_SERVICES = {
+            "https://amazonaws.com",
+            "https://ipify.org",
+            "https://icanhazip.com",
+            "https://ipinfo.io"
+        };
+        Exception lastException = null;
+
+        for (String serviceUrl : IP_SERVICES) {
+            try {
+                URL url = URI.create(serviceUrl).toURL();
+                HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+                
+                // CRUCIAL: Set a standard User-Agent header to pretend to be a web browser
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+                connection.setConnectTimeout(5000); // 5 seconds timeout
+                connection.setReadTimeout(5000);
+
+                try (BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
+                    String result = br.readLine();
+                    if (result != null) {
+                        result = result.trim();
+                        // Verify that what we got back actually looks like an IP address (and not HTML)
+                        if (!result.startsWith("<") && (result.contains(".") || result.contains(":"))) {
+                            return result + ":" + port; 
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                lastException = e; // Store exception and try the next service
+            }
+        }
+        return "All IP services failed. Last error: " + (lastException != null ? lastException.getMessage() : "Unknown error");
+    }
+    public String brokenGetPublicAddress() {
         try {
+            // Second:  https://amazonaws.com
+            // First:   https://://amazonaws.com
             URL url = URI.create("https://amazonaws.com").toURL();
             BufferedReader br = new BufferedReader(new InputStreamReader(url.openStream()));
 

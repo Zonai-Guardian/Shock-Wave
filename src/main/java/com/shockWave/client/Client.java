@@ -5,11 +5,9 @@ import java.awt.Color;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics2D;
-import java.awt.List;
 import java.awt.Point;
 import java.awt.Polygon;
 import java.awt.Rectangle;
-import java.lang.reflect.Array;
 import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -26,18 +24,21 @@ import com.shockWave.graphics.Menu;
 import com.shockWave.graphics.MenuManager;
 import com.shockWave.graphics.RenderEngine;
 import com.shockWave.graphics.g_components.GButton;
-import com.shockWave.graphics.g_components.GComponent;
+import com.shockWave.graphics.g_components.GButtonTemplate;
+import com.shockWave.graphics.g_components.GComponent.ActivationType;
 import com.shockWave.graphics.g_components.GComponent.GComponentSizes;
+import com.shockWave.libraries.ConstantLibrary;
 import com.shockWave.networking.Packet;
-import com.shockWave.networking.PacketManager.PacketDataType;
 import com.shockWave.networking.PacketManager.PacketPurpose;
+import com.shockWave.notification.Notification;
 
 public class Client {
     public ClientSocketManager socketManager;
+    public volatile long lastPacketReceiveTime = 0;
     private int packetGenerationTick = 0;
 
     // enums
-    public static enum ClientState {STARTUP, LOADING, CONNECTING, RUNNING, EXITING, LOST_CONNECTION} // I don't know if I'll actually use all of these...
+    public static enum ClientState {STARTUP, LOADING, CONNECTING, RUNNING, LOST_CONNECTION /*not intentional*/, DISCONNECTING  /*is intentional*/, KICKED, SHUTTING_DOWN} // I don't know if I'll actually use all of these...
     
     //all variables that can/should be deleted when the player exits the world
     public ClientState clientState = ClientState.STARTUP;
@@ -57,6 +58,12 @@ public class Client {
         System.out.println("Successfully started Client with displayName: " + displayName);
     }
 
+    public void shutDownClientGently() {
+        clientState = ClientState.SHUTTING_DOWN;
+        socketManager.shouldShutDown = true;
+        socketManager.shutDown();
+    }
+
     public void loadAllData() {
         //load all required data to run the client
         loadMenus();
@@ -65,31 +72,51 @@ public class Client {
         clientState = ClientState.CONNECTING;
     }
     private void loadMenus() {
-        Menu menu = new Menu("c_play"){
-            @Override
-            public String getPreferedPreviousMenu() {
-                return "c_pause";
-            }
-        };
-        Game.menuManager.addMenu(menu);
-        menu = new Menu("c_pause"){
-            @Override
-            public String getPreferedPreviousMenu() {
-                return "c_play";
-            }
-        };
-        menu.shadingDirection = Direction5.LEFT;
-        menu.shouldRenderShading = true; // Overrides shading being off my default
-        GButton gb = new GButton(){
-            @Override 
-            public void activateComponent() {
-                Game.menuManager.addToPath("c_play", Direction5.LEFT);
-            }
-        };
-        gb.setCommons("Resume Game", "Continue playing the game");
-        gb.setDisplayRect(new Point(300, 700), GComponentSizes.LARGE, Direction8.CENTER_CENTER);
-        menu.addGComponent(gb);
-        Game.menuManager.addMenu(menu);
+        if (true) {
+            Menu menu = new Menu("c_play"){
+                @Override
+                public boolean handleGoingBackPack() {
+                    Game.menuManager.setPath("c_pause", Direction5.RIGHT);
+                    return true;
+                }
+            };
+            Game.menuManager.addMenu(menu);
+        }
+        
+        if (true) {
+            Menu menu = MenuManager.getAssembledMenuOfButtons(
+                new Menu("c_pause"){
+                    @Override
+                    public boolean handleGoingBackPack() {
+                        Game.menuManager.setPath("c_play", Direction5.LEFT);
+                        return true;
+                    }
+                },
+                new GButtonTemplate[]{
+                    new GButtonTemplate("Quit Game", "Stop the game and exit to main menu", ActivationType.CODE, null, () -> {
+                        if (Game.server != null) {
+                            Game.shutDownServer();
+                        }
+                        Game.shutDownClientGently();
+                    }, null),
+                    new GButtonTemplate("", "", ActivationType.NONE),
+                    new GButtonTemplate("Settings", "Change or view all of the changable settings", ActivationType.GO_TO_MENU, "s_general"),
+                    new GButtonTemplate("", "", ActivationType.NONE),
+                    new GButtonTemplate("Resume Game", "Continue playing the game", ActivationType.CODE, null, () -> {Game.menuManager.addToPath("c_play", Direction5.LEFT);}, null)
+                },
+                ConstantLibrary.GUI.MENU_CORNER,
+                Direction8.LEFT_CENTER,
+            new Point(0, ConstantLibrary.GUI.MENU_COMPONENT_OFFSET.y),
+                GComponentSizes.LARGE,
+                Direction8.LEFT_CENTER,
+                Direction5.LEFT
+            );
+            
+            menu.shadingDirection = Direction5.LEFT;
+            menu.shouldRenderShading = true; // Overrides shading being off my default
+            Game.menuManager.addMenu(menu);
+        }
+        // make that take a menu that has already been created...and modified...
         
     }
     public void handleInput(String action, boolean wasPressed) { // This method handles actions that need things done when they get pressed or released
@@ -166,14 +193,30 @@ public class Client {
                 // Do nothing...
                 break;
             case RUNNING:
+                if (lastPacketReceiveTime != 0 && (System.currentTimeMillis() - lastPacketReceiveTime) / 1000 > 5) {
+                    lastPacketReceiveTime = 0;
+                    socketManager.packetsToGenerate.add(PacketPurpose.DISCONNECT);
+                    clientState = ClientState.LOST_CONNECTION;
+                    break;
+                }
+
                 if (player != null) {player.update();}
                 playerManager.interpolatePlayerMovement();
-                break;
-            case EXITING:
-                // Do nothing...
+
                 break;
             case LOST_CONNECTION:
-                // Do nothing...
+                Game.shutDownClientGently();
+                Game.notificationManager.addNotification(new Notification("Lost Connection", "Lost connection with the server! Try connecting again?", "errorIcon", 5.0));
+                break;
+            case DISCONNECTING:
+                Game.shutDownClientGently();
+                Game.notificationManager.addNotification(new Notification("Exited Game", "Intentionally disconnected from server", "clientIcon", 5.0));
+                break;
+            case KICKED:
+                Game.shutDownClientGently();
+                Game.notificationManager.addNotification(new Notification("Kicked From Game", "Server kicked you from the game", "errorIcon", 5.0));
+                break;
+            case SHUTTING_DOWN: // Waiting 
                 break;
         }
         
@@ -188,11 +231,13 @@ public class Client {
         ArrayList<Packet> packetList = socketManager.getReceivedPackets(); // This will automatically get the device packets if the server is on this device.
 
         for (Packet packet : packetList) {
-            System.out.println("    Receiving packet in Client with purpose: " +  EngineCalculator.shortToPacketPurpose(packet.packetPurpose));
+            Game.client.lastPacketReceiveTime = System.currentTimeMillis();
+            
+            //System.out.println("    Receiving packet in Client with purpose: " +  EngineCalculator.shortToPacketPurpose(packet.packetPurpose));
             
             switch (EngineCalculator.shortToPacketPurpose(packet.packetPurpose)) {
                 case DISCONNECT:
-                    socketManager.shutDownClient();
+                    clientState = ClientState.KICKED;
                     break;
                 case REGISTER_PLAYER_TO_SERVER_S2:
                     System.out.println("    Starting Register 2!!");
@@ -270,6 +315,9 @@ public class Client {
                         packet.readData();
                     }
                     break;
+                case DELETE_PLAYER_IN_CLIENT:
+                    playerManager.removePlayer(packet.readData().shortVar);
+                    break;
             }
         }
     }
@@ -286,7 +334,7 @@ public class Client {
         socketManager.packetsToGenerate.drainTo(purposes);
 
         for (PacketPurpose purpose : purposes) {
-            System.out.println("    Generating packet in Client with purpose: " + purpose);
+            //System.out.println("    Generating packet in Client with purpose: " + purpose);
 
             Packet packet = new Packet(EngineCalculator.enumToShort(PacketPurpose.class, purpose), -1);
             switch (purpose) {
@@ -317,6 +365,7 @@ public class Client {
             case STARTUP:
                 // Starting the client
                 g.setColor(Color.BLACK);
+                g.setFont(ConstantLibrary.GUI.CLIENT_PLACEHOLDER_FONT);
                 RenderEngine.drawTextCenteredInRect(new Rectangle(0, 0, Game.gameResolution.width, Game.gameResolution.height), "Starting Client...", g);
                 break;
             case LOADING:
@@ -324,6 +373,7 @@ public class Client {
                 g.setColor(Color.DARK_GRAY);
                 g.fillRect(0, 0, Game.gameResolution.width, Game.gameResolution.height);
                 g.setColor(Color.BLACK);
+                g.setFont(ConstantLibrary.GUI.CLIENT_PLACEHOLDER_FONT);
                 RenderEngine.drawTextCenteredInRect(new Rectangle(0, 0, Game.gameResolution.width, Game.gameResolution.height), "Loading Client Assets...", g);
                 break;
             case CONNECTING:
@@ -331,23 +381,29 @@ public class Client {
                 g.setColor(Color.GRAY);
                 g.fillRect(0, 0, Game.gameResolution.width, Game.gameResolution.height);
                 g.setColor(Color.BLACK);
+                g.setFont(ConstantLibrary.GUI.CLIENT_PLACEHOLDER_FONT);
                 RenderEngine.drawTextCenteredInRect(new Rectangle(0, 0, Game.gameResolution.width, Game.gameResolution.height), "Connecting to Server...", g);
                 break;
             case RUNNING:
                 // draw players, objects, scene, etc.
                 g.setColor(Color.CYAN);
+                g.setFont(ConstantLibrary.GUI.CLIENT_PLACEHOLDER_FONT);
                 g.fillRect(0, 0, Game.gameResolution.width, Game.gameResolution.height);
                 renderPlayers(g);
                 break;
-            case EXITING:
-                // idk when this would be used
-                g.setColor(Color.BLACK);
-                RenderEngine.drawTextCenteredInRect(new Rectangle(0, 0, Game.gameResolution.width, Game.gameResolution.height), "Exiting...", g);
-                break;
-            case LOST_CONNECTION:
+            case DISCONNECTING:
                 // When the client lost connection with the server and has not stopped the client yet to go back to the main menus
                 g.setColor(Color.BLACK);
-                RenderEngine.drawTextCenteredInRect(new Rectangle(0, 0, Game.gameResolution.width, Game.gameResolution.height), "Lost Connection...", g);
+                g.setFont(ConstantLibrary.GUI.CLIENT_PLACEHOLDER_FONT);
+                RenderEngine.drawTextCenteredInRect(new Rectangle(0, 0, Game.gameResolution.width, Game.gameResolution.height), "Disconnecting...", g);
+                break;
+            case SHUTTING_DOWN:
+                // idk when this would be used
+                g.setColor(Color.RED);
+                g.fillRect(0, 0, Game.gameResolution.width, Game.gameResolution.height);
+                g.setColor(Color.BLACK);
+                g.setFont(ConstantLibrary.GUI.CLIENT_PLACEHOLDER_FONT);
+                RenderEngine.drawTextCenteredInRect(new Rectangle(0, 0, Game.gameResolution.width, Game.gameResolution.height), "Shutting Down Client...", g);
                 break;
         }
     }
@@ -420,7 +476,7 @@ public class Client {
         int nameWidth = fm.stringWidth(playerDisplayName);
 
         g.setColor(Color.BLACK);
-        g.setFont(new Font("Sanserif", Font.PLAIN, 40));
+        g.setFont(ConstantLibrary.GamePlay.PLAYER_DISPLAY_NAME_FONT);
         g.drawString(playerDisplayName, x - nameWidth / 2, y - 40);
         //g.drawString(playerDirection.toString(), x, y);
     }

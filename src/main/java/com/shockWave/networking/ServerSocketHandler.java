@@ -9,7 +9,6 @@ import java.util.ArrayList;
 
 import com.shockWave.Game;
 import com.shockWave.engine.EngineCalculator;
-import com.shockWave.networking.PacketManager.PacketDataType;
 
 public class ServerSocketHandler {
     // For when the connected to the client that's on this device
@@ -22,6 +21,12 @@ public class ServerSocketHandler {
     private Socket clientSocket;
     public DataInputStream inputStream;
     public DataOutputStream outputStream;
+
+    private boolean shouldShutDown = false;
+    public boolean isReceivingThreadRunning = false;
+
+    public long lastPacketReceiveTime = 0; // 0 means that it has not received a packet yet
+    public PacketWrapper splitPacketWrapper = new PacketWrapper(null);
     
     public ServerSocketHandler(int clientID) {
         isLinkedToClientOnDevice = true;
@@ -44,8 +49,16 @@ public class ServerSocketHandler {
         
         new Thread(() -> {receivePackets();}).start();
     }
-
-    public void close() {
+    public void startShutDown() {
+        shouldShutDown = true;
+    }
+    public boolean isReadyToShutDown() {
+        return isReceivingThreadRunning;
+    }
+    public void finishShutDown() {
+        closeStreams();
+    }
+    public void closeStreams() {
         // Close inputStream
         try {
             if (inputStream != null) {
@@ -70,15 +83,18 @@ public class ServerSocketHandler {
         if (isLinkedToClientOnDevice) {
             return; // Don't keep the thread, stop method
         } else {
-            while (Game.server.shouldStopServer == false) {
+            isReceivingThreadRunning = true;
+            while (Game.server.shouldStopServer == false && shouldShutDown == false) { // If either of them becomes true it will stop
                 if (clientSocket.isConnected()) {
-                    ArrayList<Packet> packets = PacketManager.readPacketsFromInputStream(inputStream, Game.server.socketManager.getClientID(clientAddress, clientPort));
+                    ArrayList<Packet> packets = PacketManager.readPacketsFromInputStream(inputStream, Game.server.socketManager.getClientID(clientAddress, clientPort), splitPacketWrapper);
                     for (Packet packet : packets) {
                         System.out.println("Received a packet via a Socket!");
                         Game.server.socketManager.packetsReceived.add(packet);
+                        lastPacketReceiveTime = System.currentTimeMillis();
                     }
                 }
             }
+            isReceivingThreadRunning = false;
         }
     }
     public void receiveDevicePackets() { // This will get called every tick to receive packets meant for the server from the client on the same device

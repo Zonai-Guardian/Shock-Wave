@@ -19,7 +19,9 @@ import com.shockWave.graphics.g_components.GButton;
 import com.shockWave.graphics.g_components.GButtonTemplate;
 import com.shockWave.graphics.g_components.GComponent;
 import com.shockWave.graphics.g_components.GComponent.ActivationType;
+import com.shockWave.graphics.g_components.GComponent.ComponentStyle;
 import com.shockWave.graphics.g_components.GComponent.GComponentSizes;
+import com.shockWave.libraries.ConstantLibrary;
 
 public class MenuManager {
     // Text Manager (it manages typing-related things)
@@ -65,10 +67,14 @@ public class MenuManager {
         updateTimers();
         updateSelections();
         updateMenus();
+        updateMenuComponents();
         textManager.updateTimers();
     }
     private void updateTimers() {
         if (timeOverComponent < maxTimeOverComponent) {timeOverComponent++;}
+    }
+    private void updateMenuComponents() {
+        getMenu(getActiveMenuName()).updateMenuComponents();
     }
     private void updateSelections() {
         deselectAllComponents(getActiveMenuName());
@@ -157,11 +163,21 @@ public class MenuManager {
             animationDirection = newAnimationDirection == null ? defaultChangeAnimationDirection : newAnimationDirection;
         }
     }
+    public void setPath(String menuName, Direction5 newAnimationDirection) {
+        deselectAllComponents(getActiveMenuName());
+        if (menuName.equals(getActiveMenuName()) == false) {
+            previousMenu = getActiveMenuName();
+            menuPath.add(menuName);
+            resetMenuVars();
+            animationDirection = newAnimationDirection == null ? defaultChangeAnimationDirection : newAnimationDirection;
+        }
+    }
     public void goBackPath(Direction5 newAnimationDirection) {
         deselectAllComponents(getActiveMenuName());
 
-        String preferedPreviousMenuName = getMenu(getActiveMenuName()).getPreferedPreviousMenu();
-        if (preferedPreviousMenuName == null) {
+        boolean didMenuHandleGoingBackPath = getMenu(getActiveMenuName()).handleGoingBackPack();
+        
+        if (didMenuHandleGoingBackPath == false) {
             if (menuPath.size() > 1) {
                 previousMenu = getActiveMenuName();
                 menuPath.remove(menuPath.size() - 1);
@@ -169,11 +185,7 @@ public class MenuManager {
                 animationDirection = newAnimationDirection == null ? defaultBackAnimationDirection : newAnimationDirection;
             }
         } else {
-            previousMenu = getActiveMenuName();
-            menuPath.clear();
-            menuPath.add(preferedPreviousMenuName);
-            resetMenuVars();
-            animationDirection = newAnimationDirection == null ? defaultBackAnimationDirection : newAnimationDirection;
+            // Do Nothing
         }
     }
     private void resetMenuVars() {
@@ -376,9 +388,12 @@ public class MenuManager {
     public void renderDebug(Graphics2D g) {
         render(true, g);
     }
-
+    
     public static void assembleMenuOfButtons(String menuName, GButtonTemplate[] templates, Point firstComponentPoint, Direction8 directionOfPoint, Point offsetPerComponent, GComponentSizes buttonSize, Direction8 textDirection, Direction5 shadingDirection) {
-        Menu menu = new Menu(menuName);
+        Game.menuManager.addMenu(getAssembledMenuOfButtons(new Menu(menuName), templates, firstComponentPoint, directionOfPoint, offsetPerComponent, buttonSize, textDirection, shadingDirection));
+    }
+
+    public static Menu getAssembledMenuOfButtons(Menu menu, GButtonTemplate[] templates, Point firstComponentPoint, Direction8 directionOfPoint, Point offsetPerComponent, GComponentSizes buttonSize, Direction8 textDirection, Direction5 shadingDirection) {
         menu.shadingDirection = shadingDirection;
         GButton button = new GButton();
         Point nextPosition = new Point(firstComponentPoint);
@@ -404,6 +419,20 @@ public class MenuManager {
             nextControllerSelectionRect.x += controllerSelectionOffset.x;
             nextControllerSelectionRect.y += controllerSelectionOffset.y;
         }
-        Game.menuManager.addMenu(menu);
+        return menu;
+    }
+
+
+    // Other getters/generators
+
+    // (These are for consistancy)
+    public static GButton getBackButton(ComponentStyle style) {
+        GButton button = new GButton();
+        button.setCommons("Back", "Go back to the previous menu");
+        button.setDisplayRect(new Point(ConstantLibrary.GUI.MENU_CORNER.x, Game.gameResolution.height / 4 * 3), GComponentSizes.LARGE, Direction8.LEFT_CENTER);
+        button.activationType = ActivationType.BACK;
+        button.componentStyle = style;
+
+        return button;
     }
 }
